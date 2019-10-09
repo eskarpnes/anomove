@@ -1,0 +1,4 @@
+venv
+*.ipynb
+.idea
+__pycache__
