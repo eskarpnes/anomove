@@ -28,7 +28,7 @@ class ETL:
 
         cima = {}
         for file in cima_files:
-            file_name = file.split("/")[-1].split(".")[0]
+            file_name = file.split(os.sep)[-1].split(".")[0]
             file_id = file_name[:3] if file_name[0].isnumeric() else file_name[:7]
             meta_row = self.metadata.loc[self.metadata["id"] == file_id]
             if meta_row.empty:
