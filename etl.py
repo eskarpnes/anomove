@@ -35,24 +35,13 @@ class ETL:
         return self.cima
 
     def load_metadata(self, dataset):
-        meta_path = os.path.join(self.DATA_PATH, dataset)
-        if os.path.exists(os.path.join(meta_path, "metadata.xls")):
-            path = os.path.join(meta_path, "metadata.xls")
-            metadata = pd.read_excel(path)
-            metadata = metadata.drop(["CP score", "Unnamed: 5", "Unnamed: 6", "Unnamed: 7", "Unnamed: 8"], axis=1)
-            metadata.rename(columns={"ID nummer": "id", "CP score": "score", "CP utkom": "cp"}, inplace=True)
-
-            # Rename video ids to remove suffix
-            # Either III or AAA_III where A is alphabetic and I is integers
-            metadata["id"] = metadata["id"].apply(lambda name: name[:3] if name[0].isnumeric() else name[:7])
-            self.metadata = metadata
-        else:
-            path = os.path.join(meta_path, "metadata.csv")
-            self.metadata = pd.read_csv(path)
+        meta_path = os.path.join(self.DATA_PATH, dataset, "metadata.csv")
+        self.metadata = pd.read_csv(meta_path)
 
 
     def load(self, dataset, tiny=False):
         cima_files = []
+        missing_metadata = []
         cima_path = os.path.join(self.DATA_PATH, dataset)
 
         self.load_metadata(dataset)
@@ -74,13 +63,13 @@ class ETL:
         for file in tqdm(cima_files):
             file_name = file.split(os.sep)[-1].split(".")[0]
             file_id = file_name[:3] if file_name[0].isnumeric() else file_name[:7]
-            meta_row = self.metadata.loc[self.metadata["id"] == file_id]
+            meta_row = self.metadata.loc[self.metadata["ID"] == file_id]
             if meta_row.empty:
+                missing_metadata.append(file_id)
                 continue
             data = pd.read_csv(file)
             data = data.drop(columns=["Unnamed: 0"], errors="ignore")
-            self.cima[file_id] = {"data": data, "label": meta_row.iloc[0]["cp"]}
-
+            self.cima[file_id] = {"data": data, "label": meta_row.iloc[0]["CP"], "fps": meta_row.iloc[0]["FPS"]}
 
     def create_angles(self):
         cima_angles = {}
@@ -91,7 +80,6 @@ class ETL:
             data = item["data"]
             angles = {key: [] for key in self.angles.keys()}
             for row in data.iterrows():
-                index = row[0]
                 row_data = row[1]
                 for angle_key, points in self.angles.items():
                     p0 = [row_data[points[0] + "_x"], row_data[points[0] + "_y"]]
@@ -99,7 +87,7 @@ class ETL:
                     p2 = [row_data[points[2] + "_x"], row_data[points[2] + "_y"]]
                     vec1 = np.array(p0) - np.array(p1)
                     vec2 = np.array(p2) - np.array(p1)
-                    angle = get_angle(vec1, vec2)
+                    angle = np.abs(np.math.atan2(np.linalg.det([vec1,vec2]),np.dot(vec1,vec2)))
                     angles[angle_key].append(angle)
             for new_key, angles_list in angles.items():
                 data[new_key] = pd.Series(angles_list)
@@ -121,15 +109,6 @@ class ETL:
 
 if __name__ == "__main__":
     etl = ETL("/home/login/Dataset/")
-    etl.load("CIMA_Transformed")
-    # etl.create_angles()
-    cima = etl.get_cima()
-    keys = list(cima.keys())
-    x = 0
-    for key, item in cima.items():
-        print(x)
-        x += 1
-        data = item["data"]
-        data = data.drop(columns=["nose_x",    "nose_y",  "upper_chest_x",  "upper_chest_y",  "right_wrist_x",  "right_wrist_y",  "left_wrist_x",  "left_wrist_y",  "hip_center_x",  "hip_center_y",  "right_ankle_x",  "right_ankle_y",  "left_ankle_x",  "left_ankle_y"])
-        print(data.describe())
-    # etl.save()
+    etl.load("CIMA")
+    etl.create_angles()
+    #etl.save(name="CIMA_angles")
