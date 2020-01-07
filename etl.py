@@ -90,8 +90,34 @@ class ETL:
                     angle = np.abs(np.math.atan2(np.linalg.det([vec1,vec2]),np.dot(vec1,vec2)))
                     angles[angle_key].append(angle)
             for new_key, angles_list in angles.items():
-                data[new_key] = pd.Series(angles_list)
+                data[new_key] = angles_list
             self.cima[key]["data"] = data
+
+    # Resample to 30 fps by interpolation.
+    def resample(self, target_framerate=30):
+        for key, item in tqdm(self.cima.items()):
+            data = item["data"]
+            time = (data["frame"]-1) * 1/item["fps"]
+            data["time"] = time
+            data = data.set_index("time")
+
+            if item["fps"] == target_framerate:
+                item["data"] = data
+                continue
+
+            end_time = max(time)
+            interpolated_length = int(end_time / (1/target_framerate))
+            interpolated_frames = pd.Series(range(0, interpolated_length))
+            interpolated_time = interpolated_frames * 1/target_framerate
+
+            time = time.append(interpolated_time, ignore_index=True).drop_duplicates().sort_values()
+            data = data.reindex(time).interpolate(method="slinear")
+            # resampled_data = data.loc[data.index.isin(interpolated_time)
+            resampled_data = data.filter(items=interpolated_time, axis=0)
+            resampled_data["frame"] = list(interpolated_frames)
+            item["data"] = resampled_data
+            item["fps"] = target_framerate
+
 
     def save(self, name="CIMA_Transformed"):
         save_path = os.path.join(self.DATA_PATH, name)
@@ -109,6 +135,8 @@ class ETL:
 
 if __name__ == "__main__":
     etl = ETL("/home/login/Dataset/")
-    etl.load("CIMA")
+    etl.load("CIMA", tiny=False)
+    etl.resample()
     etl.create_angles()
-    #etl.save(name="CIMA_angles")
+    # cima = etl.get_cima()
+    etl.save(name="CIMA_angles_resampled")
