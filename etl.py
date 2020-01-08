@@ -68,7 +68,7 @@ class ETL:
                 missing_metadata.append(file_id)
                 continue
             data = pd.read_csv(file)
-            data = data.drop(columns=["Unnamed: 0"], errors="ignore")
+            # data = data.drop(columns=["Unnamed: 0"], errors="ignore")
             self.cima[file_id] = {"data": data, "label": meta_row.iloc[0]["CP"], "fps": meta_row.iloc[0]["FPS"]}
 
     def create_angles(self):
@@ -112,12 +112,40 @@ class ETL:
 
             time = time.append(interpolated_time, ignore_index=True).drop_duplicates().sort_values()
             data = data.reindex(time).interpolate(method="slinear")
-            # resampled_data = data.loc[data.index.isin(interpolated_time)
             resampled_data = data.filter(items=interpolated_time, axis=0)
             resampled_data["frame"] = list(interpolated_frames)
             item["data"] = resampled_data
             item["fps"] = target_framerate
 
+    def generate_fourier_dataset(self):
+        window_sizes = [128, 256, 512]
+        for window_size in window_sizes:
+            self.generate_fourier_all_angles(window_size)
+
+    def generate_fourier_all_angles(self, window_size):
+        for angle in tqdm(self.angles.keys()):
+            self.generate_fourier_data(window_size, angle)
+
+    def generate_fourier_data(self, window_size, angle):
+        dataset = pd.DataFrame(columns=["label", "data"])
+        for key, item in self.cima.items():
+            data = item["data"]
+            data = data.filter(items=[angle])
+            for i in range(0, len(data), window_size):
+                window = data.loc[i:i+window_size-1, : ]
+                if len(window) < window_size:
+                    continue
+                angle_data = window[angle]
+                angle_data = angle_data - angle_data.mean()
+                fourier_data = np.abs(np.fft.fft(angle_data))
+                dataset = dataset.append({"label": item["label"], "data": list(fourier_data[1:window_size//2])}, ignore_index=True)
+        self.save_fourier_dataset(window_size, angle, dataset)
+
+    def save_fourier_dataset(self, window_size, angle, data):
+        save_path = os.path.join(self.DATA_PATH, str(window_size))
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+        data.to_csv(os.path.join(save_path, angle + ".csv"))
 
     def save(self, name="CIMA_Transformed"):
         save_path = os.path.join(self.DATA_PATH, name)
@@ -135,8 +163,7 @@ class ETL:
 
 if __name__ == "__main__":
     etl = ETL("/home/login/Dataset/")
-    etl.load("CIMA", tiny=False)
-    etl.resample()
-    etl.create_angles()
+    etl.load("CIMA_angles_resampled", tiny=False)
+    etl.generate_fourier_dataset()
     # cima = etl.get_cima()
-    etl.save(name="CIMA_angles_resampled")
+    # etl.save(name="CIMA_angles_resampled")
