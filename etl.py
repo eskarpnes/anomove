@@ -19,9 +19,10 @@ def get_angle(vec1, vec2):
 
 class ETL:
 
-    def __init__(self, data_path):
+    def __init__(self, data_path, window_sizes=[128, 256, 512]):
         self.DATA_PATH = data_path
         self.cima = {}
+        self.window_sizes = window_sizes
         self.angles = {
             "V1": ["upper_chest", "nose", "right_wrist"],
             "V2": ["upper_chest", "nose", "left_wrist"],
@@ -118,8 +119,7 @@ class ETL:
             item["fps"] = target_framerate
 
     def generate_fourier_dataset(self):
-        window_sizes = [128, 256, 512]
-        for window_size in window_sizes:
+        for window_size in self.window_sizes:
             self.generate_fourier_all_angles(window_size)
 
     def generate_fourier_all_angles(self, window_size):
@@ -162,8 +162,9 @@ class ETL:
 
 
 if __name__ == "__main__":
-    etl = ETL("/home/login/Dataset/")
+    etl = ETL("/home/erlend/datasets/", window_sizes=[128, 256, 512, 1024])
     etl.load("CIMA_angles_resampled", tiny=False)
-    etl.generate_fourier_dataset()
-    # cima = etl.get_cima()
+    # etl.resample()
+    # etl.create_angles()
     # etl.save(name="CIMA_angles_resampled")
+    etl.generate_fourier_dataset()
