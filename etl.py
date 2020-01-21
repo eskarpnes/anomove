@@ -145,7 +145,7 @@ class ETL:
         save_path = os.path.join(self.DATA_PATH, str(window_size))
         if not os.path.exists(save_path):
             os.makedirs(save_path)
-        data.to_csv(os.path.join(save_path, angle + ".csv"))
+        data.to_json(os.path.join(save_path, angle + ".json"))
 
     def save(self, name="CIMA_Transformed"):
         save_path = os.path.join(self.DATA_PATH, name)
