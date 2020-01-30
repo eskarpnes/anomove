@@ -2,3 +2,4 @@ venv
 *.ipynb
 .idea
 __pycache__
+*.png
