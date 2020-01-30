@@ -4,6 +4,8 @@ import os
 from sklearn import model_selection, neighbors, metrics
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 
 def graph_knn(angle, window_size):
@@ -59,6 +61,28 @@ def graph_knn(angle, window_size):
 angles = ["V1", "V2", "V3", "V4", "V5", "V6"]
 window_sizes = ["128", "256", "512", "1024"]
 
-for window_size in window_sizes:
-    for angle in angles:
-        graph_knn(angle, window_size)
+window_size = "128"
+angle = "V5"
+
+DATA_PATH = "/home/erlend/datasets/" + window_size + "/" + angle + ".json"
+
+df = pd.read_json(DATA_PATH)
+df_features = pd.DataFrame(df.data.tolist())
+df_features = StandardScaler().fit_transform(df_features)
+
+pca = PCA(n_components=10)
+principal_components = pca.fit_transform(df_features)
+principal_df = pd.DataFrame(data=principal_components)
+
+data = principal_df
+
+X_train, X_test, y_train, y_test = model_selection.train_test_split(data, df["label"], test_size=0.25)
+
+knn = neighbors.KNeighborsClassifier(n_neighbors=1)
+
+knn.fit(X_train, y_train)
+
+pred = knn.predict(X_test)
+
+print(metrics.confusion_matrix(y_test, pred))
+print(metrics.classification_report(y_test, pred))
