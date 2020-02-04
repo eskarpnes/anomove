@@ -1,17 +1,16 @@
-#!/usr/bin/env python
-# coding: utf-8
 import os
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import pickle
-from multiprocessing import Pool
+from multiprocessing import Pool, cpu_count
 
 pd.set_option('display.max_columns', 500)
 pd.set_option('display.width', 1000)
 
 vector_lengths = []
+
 
 def unit_vector(vector):
     return vector / np.linalg.norm(vector)
@@ -33,16 +32,21 @@ def get_vectors(points, row_data):
     vector_length(vec2)
     return vec1, vec2
 
+
 def vector_length(vec):
-    length = np.sqrt(vec[0]**2+vec[1]**2)
+    length = np.sqrt(vec[0] ** 2 + vec[1] ** 2)
     return length
 
 
 class ETL:
 
-    def __init__(self, data_path, window_sizes=[128, 256, 512]):
+    def __init__(self, data_path, window_sizes=[128, 256, 512], bandwidth=5, pooling="mean", noise_reduction="movement"):
         self.DATA_PATH = data_path
         # Minimal difference in x or y axis in one frame to count as movement
+        all_noise_reduction = ["movement", "short_vector"]
+        self.noise_reduction = all_noise_reduction if noise_reduction is "all" else [noise_reduction]
+        self.bandwidth = bandwidth
+        self.pooling = pooling
         self.MINIMAL_MOVEMENT = 0.02
         self.MINIMAL_VECTOR_LENGTH = 0.1
         self.cima = {}
@@ -85,12 +89,9 @@ class ETL:
         if tiny:
             cima_files = cima_files[:5]
 
-
-        print("\n\n----------------")
-        print(" Loading CIMA ")
-        print("----------------\n")
-
-
+        # print("\n\n----------------")
+        # print(" Loading CIMA ")
+        # print("----------------\n")
 
         for file in tqdm(cima_files):
             file_name = file.split(os.sep)[-1].split(".")[0]
@@ -169,18 +170,24 @@ class ETL:
 
     def generate_fourier_dataset(self):
         num_processes = len(self.window_sizes) * len(self.angles.keys())
-        pool = Pool(num_processes)
+        if cpu_count() > 12:
+            pool = Pool(num_processes)
         pbar = tqdm(total=num_processes)
 
-        def update_progress(self, *a):
+        def update_progress(*a):
             pbar.update()
 
         for window_size in self.window_sizes:
+            if cpu_count() <= 12:
+                pool = Pool(6)
             for angle in self.angles.keys():
-                pool.apply_async(self.generate_fourier_data, args=(window_size, angle, ), callback=update_progress)
-
-        pool.close()
-        pool.join()
+                pool.apply_async(self.generate_fourier_data, args=(window_size, angle,), callback=update_progress)
+            if cpu_count() <= 12:
+                pool.close()
+                pool.join()
+        if cpu_count() > 12:
+            pool.close()
+            pool.join()
 
     def generate_fourier_all_angles(self, window_size):
         for angle in self.angles.keys():
@@ -195,30 +202,35 @@ class ETL:
                 window = data.loc[i:i + window_size - 1, :]
                 if len(window) < window_size:
                     continue
-                if not self.detect_movement(window, angle):
+                if "movement" in self.noise_reduction and not self.detect_movement(window, angle):
                     continue
-                if key in self.invalid_frames.keys():
-                    if angle in self.invalid_frames[key].keys():
-                        frames = set(window.index.values)
-                        if len(frames.intersection(self.invalid_frames[key][angle])) > 0:
-                            continue
+                if "short_vector" in self.noise_reduction:
+                    if key in self.invalid_frames.keys():
+                        if angle in self.invalid_frames[key].keys():
+                            frames = set(window.index.values)
+                            if len(frames.intersection(self.invalid_frames[key][angle])) > 0:
+                                continue
                 angle_data = window[angle]
                 angle_data = angle_data - angle_data.mean()
                 fourier_data = np.abs(np.fft.fft(angle_data))
                 dataset = dataset.append({"label": item["label"], "data": list(fourier_data[1:window_size // 2])},
                                          ignore_index=True)
-        dataset = self.generate_frequency_bands(dataset, 5)
+        if self.bandwidth is not None:
+            dataset = self.generate_frequency_bands(dataset)
         self.save_fourier_dataset(window_size, angle, dataset)
 
-    def generate_frequency_bands(self, dataset, band_width):
+    def generate_frequency_bands(self, dataset):
         # Will not check if last window is of size band_width
         for idx, row in dataset.iterrows():
             data_series = pd.Series(row["data"])
             means = []
-            for i in range(0, len(data_series), band_width):
-                window = data_series.loc[i:i + band_width - 1]
+            for i in range(0, len(data_series), self.bandwidth):
+                window = data_series.loc[i:i + self.bandwidth - 1]
                 # Can be either max or mean or another measure
-                means.append(window.mean())
+                if self.pooling is "mean":
+                    means.append(window.mean())
+                if self.pooling is "max":
+                    means.append(window.max())
             dataset["data"][idx] = means
         return dataset
 
@@ -247,6 +259,9 @@ class ETL:
 
 
 if __name__ == "__main__":
-    etl = ETL("/home/erlend/datasets/", window_sizes=[128, 256, 512, 1024])
-    etl.load("CIMA_angles_resampled_cleaned", tiny=False)
+    etl = ETL("/home/login/Dataset/", window_sizes=[128, 256, 512, 1024])
+    etl.load("CIMA_angles_resampled_cleaned", tiny=True)
+    # etl.resample()
+    # etl.create_angles()
+    # etl.save("CIMA_angles_resampled_clean")
     etl.generate_fourier_dataset()
