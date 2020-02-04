@@ -227,9 +227,9 @@ class ETL:
             for i in range(0, len(data_series), self.bandwidth):
                 window = data_series.loc[i:i + self.bandwidth - 1]
                 # Can be either max or mean or another measure
-                if self.pooling is "mean":
+                if self.pooling == "mean":
                     means.append(window.mean())
-                if self.pooling is "max":
+                if self.pooling == "max":
                     means.append(window.max())
             dataset["data"][idx] = means
         return dataset
