@@ -159,6 +159,12 @@ class ETL:
             item["data"] = resampled_data
             item["fps"] = target_framerate
 
+    def remove_outliers(self):
+        pass
+
+    def smooth_sma(self, window_size):
+        pass
+
     def detect_movement(self, window, angle):
         points = []
         for point in self.angles[angle]:
@@ -260,8 +266,6 @@ class ETL:
 
 if __name__ == "__main__":
     etl = ETL("/home/login/Dataset/", window_sizes=[128, 256, 512, 1024])
-    etl.load("CIMA_angles_resampled_cleaned", tiny=True)
-    # etl.resample()
-    # etl.create_angles()
-    # etl.save("CIMA_angles_resampled_clean")
+    etl.load("CIMA", tiny=True)
+    etl.remove_outliers()
     etl.generate_fourier_dataset()
