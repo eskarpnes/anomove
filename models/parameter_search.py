@@ -1,5 +1,5 @@
 import sys
-
+import time
 sys.path.append('../')
 from etl.etl import ETL
 import pandas as pd
@@ -7,17 +7,18 @@ from sklearn import model_selection, neighbors, metrics
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
-DATA_PATH = "/home/login/Dataset/"
+DATA_PATH = "/home/erlend/datasets/"
 
 parameters = {
     "noise_reduction": ["movement", "short_vector", "all"],
     "pooling": ["mean", "max"],
     "bandwidth": [None, 5, 10],
     "pca": [None, 5, 10],
+    "k": [1, 3]
 }
 
 results = pd.DataFrame(
-    columns=["noise_reduction", "bandwidth", "pooling", "pca", "window_size", "angle", "sensitivity", "specificity"]
+    columns=["noise_reduction", "bandwidth", "pooling", "pca", "k", "window_size", "angle", "sensitivity", "specificity"]
 )
 
 
@@ -49,7 +50,10 @@ def knn(data, labels, k=1, test_size=0.25):
 grid = model_selection.ParameterGrid(parameters)
 window_sizes = [128, 256, 512, 1024]
 
-for params in grid:
+
+print(f"{len(grid)} different combinations of parameters will be explored.")
+
+for i, params in enumerate(grid):
     etl = ETL(
         data_path=DATA_PATH,
         window_sizes=window_sizes,
@@ -57,7 +61,7 @@ for params in grid:
         pooling=params["pooling"],
         noise_reduction=params["noise_reduction"]
     )
-    etl.load("CIMA_angles_resampled_cleaned", tiny=True)
+    etl.load("CIMA_angles_resampled_cleaned", tiny=False)
     etl.generate_fourier_dataset()
 
     angles = ["V1", "V2", "V3", "V4", "V5", "V6"]
@@ -79,7 +83,7 @@ for params in grid:
                     data = df_features
                 labels = df["label"]
 
-                sensitivity, specificity = knn(data, labels)
+                sensitivity, specificity = knn(data, labels, k=params["k"])
             except ValueError:
                 sensitivity, specificity = ("crashed", "crashed")
 
@@ -88,11 +92,14 @@ for params in grid:
                 "bandwidth": params["bandwidth"],
                 "pooling": params["pooling"],
                 "pca": params["pca"],
+                "k": params["k"],
                 "window_size": str(window_size),
                 "angle": angle,
                 "sensitivity": sensitivity,
                 "specificity": specificity
             }, ignore_index=True)
+    # Short rest to prevent race conditions.
+    time.sleep(1)
+    print(f"{i+1} of {len(grid)} runs done.")
 
 results.to_csv("results.csv")
-print(results.head())
