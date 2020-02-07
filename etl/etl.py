@@ -44,7 +44,7 @@ class ETL:
         self.DATA_PATH = data_path
         # Minimal difference in x or y axis in one frame to count as movement
         all_noise_reduction = ["movement", "short_vector"]
-        self.noise_reduction = all_noise_reduction if noise_reduction is "all" else [noise_reduction]
+        self.noise_reduction = all_noise_reduction if noise_reduction == "all" else [noise_reduction]
         self.bandwidth = bandwidth
         self.pooling = pooling
         self.MINIMAL_MOVEMENT = 0.02
@@ -93,7 +93,7 @@ class ETL:
         # print(" Loading CIMA ")
         # print("----------------\n")
 
-        for file in tqdm(cima_files):
+        for file in cima_files:
             file_name = file.split(os.sep)[-1].split(".")[0]
             file_id = file_name[:3] if file_name[0].isnumeric() else file_name[:7]
             meta_row = self.metadata.loc[self.metadata["ID"] == file_id]
@@ -219,7 +219,7 @@ class ETL:
                 angle_data = window[angle]
                 angle_data = angle_data - angle_data.mean()
                 fourier_data = np.abs(np.fft.fft(angle_data))
-                dataset = dataset.append({"label": item["label"], "data": list(fourier_data[1:window_size // 2])},
+                dataset = dataset.append({"id": key, "label": item["label"], "data": list(fourier_data[1:window_size // 2])},
                                          ignore_index=True)
         if self.bandwidth is not None:
             dataset = self.generate_frequency_bands(dataset)
@@ -265,7 +265,9 @@ class ETL:
 
 
 if __name__ == "__main__":
-    etl = ETL("/home/login/Dataset/", window_sizes=[128, 256, 512, 1024])
-    etl.load("CIMA", tiny=True)
-    etl.remove_outliers()
+    etl = ETL("/home/erlend/datasets/", window_sizes=[128, 256, 512, 1024])
+    etl.load("CIMA_angles_resampled_cleaned", tiny=False)
+    # etl.resample()
+    # etl.create_angles()
+    # etl.save("CIMA_angles_resampled_clean")
     etl.generate_fourier_dataset()
