@@ -5,6 +5,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 import pickle
 from multiprocessing import Pool, cpu_count
+from scipy.signal import find_peaks
 
 pd.set_option('display.max_columns', 500)
 pd.set_option('display.width', 1000)
@@ -159,11 +160,35 @@ class ETL:
             item["data"] = resampled_data
             item["fps"] = target_framerate
 
-    def remove_outliers(self):
-        pass
+    def remove_outliers(self, threshold):
+        for key, item in self.cima.items():
+            data = self.cima[key]["data"]
+            for column_index in range(1, len(data.columns)):
+                slice = np.array(data.iloc[:, column_index])
+                neg_slice = [-x for x in slice]
+                peaks, _ = find_peaks(slice, threshold=threshold)
+                neg_peaks, _ = find_peaks(neg_slice, threshold=threshold)
+
+                indices = np.append(peaks, neg_peaks)
+
+                for index in indices:
+                    slice[index] = (slice[index-1] + slice[index+1])/2
+                    print("ueh")
+
+                data[column_index] = slice
+            self.cima[key]["data"] = data
 
     def smooth_sma(self, window_size):
-        pass
+        for key, item in self.cima.items():
+            data = self.cima[key]["data"]
+            for column_index in range(1, len(data.columns)):
+                slice = data.iloc[:, column_index]
+                slice = slice.rolling(window_size, center=True).mean()
+                slice = slice.fillna(method="ffill")
+                slice = slice.fillna(method="bfill")
+
+                data[column_index] = slice
+            self.cima[key]["data"] = data
 
     def detect_movement(self, window, angle):
         points = []
@@ -265,9 +290,11 @@ class ETL:
 
 
 if __name__ == "__main__":
-    etl = ETL("/home/erlend/datasets/", window_sizes=[128, 256, 512, 1024])
-    etl.load("CIMA_angles_resampled_cleaned", tiny=False)
-    # etl.resample()
+    etl = ETL("/home/login/datasets/", window_sizes=[128, 256, 512, 1024])
+    etl.load("CIMA", tiny=True)
+    etl.resample()
+    etl.remove_outliers(0.1)
+    etl.smooth_sma(5)
     # etl.create_angles()
     # etl.save("CIMA_angles_resampled_clean")
     etl.generate_fourier_dataset()
