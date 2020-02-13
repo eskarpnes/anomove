@@ -163,6 +163,7 @@ class ETL:
     def remove_outliers(self, threshold):
         for key, item in self.cima.items():
             data = self.cima[key]["data"]
+            columns = data.columns
             for column_index in range(1, len(data.columns)):
                 slice = np.array(data.iloc[:, column_index])
                 neg_slice = [-x for x in slice]
@@ -173,21 +174,21 @@ class ETL:
 
                 for index in indices:
                     slice[index] = (slice[index-1] + slice[index+1])/2
-                    print("ueh")
 
-                data[column_index] = slice
+                data[columns[column_index]] = slice
             self.cima[key]["data"] = data
 
     def smooth_sma(self, window_size):
         for key, item in self.cima.items():
             data = self.cima[key]["data"]
+            columns = data.columns
             for column_index in range(1, len(data.columns)):
                 slice = data.iloc[:, column_index]
                 slice = slice.rolling(window_size, center=True).mean()
                 slice = slice.fillna(method="ffill")
                 slice = slice.fillna(method="bfill")
 
-                data[column_index] = slice
+                data[columns[column_index]] = slice
             self.cima[key]["data"] = data
 
     def detect_movement(self, window, angle):
@@ -198,6 +199,9 @@ class ETL:
         window = window.filter(items=points)
         differences = [window[column].max() - window[column].min() for column in window]
         return any([difference > self.MINIMAL_MOVEMENT for difference in differences])
+
+    def detect_movement(self, window):
+        return window.max() - window.min() > self.MINIMAL_MOVEMENT
 
     def generate_fourier_dataset(self):
         num_processes = len(self.window_sizes) * len(self.angles.keys())
@@ -224,7 +228,7 @@ class ETL:
         for angle in self.angles.keys():
             self.generate_fourier_data(window_size, angle)
 
-    def generate_fourier_data(self, window_size, angle):
+    def generate_fourier_data_angles(self, window_size, angle):
         dataset = pd.DataFrame(columns=["label", "data"])
         for key, item in self.cima.items():
             data = item["data"]
@@ -249,6 +253,29 @@ class ETL:
         if self.bandwidth is not None:
             dataset = self.generate_frequency_bands(dataset)
         self.save_fourier_dataset(window_size, angle, dataset)
+
+    def generate_fourier_data(self, window_size):
+        dataset = pd.DataFrame(columns=["label", "data"])
+        for key, item in tqdm(self.cima.items()):
+            data = item["data"]
+            data = data.set_index("frame")
+            for i in range(0, len(data), window_size):
+                for column_index in range(1, len(data.columns), 2):
+                    window = data.iloc[i:i + window_size, column_index]
+                    if len(window) < window_size:
+                        continue
+                    if "movement" in self.noise_reduction and not self.detect_movement(window):
+                        continue
+                    window = window - window.mean()
+                    fourier_data = np.abs(np.fft.fft(window))
+                    dataset = dataset.append({
+                        "id": key,
+                        "label": item["label"],
+                        "data": list(fourier_data[1:window_size // 2])
+                    }, ignore_index=True)
+        if self.bandwidth is not None:
+            dataset = self.generate_frequency_bands(dataset)
+        self.save_fourier_dataset(window_size, "y", dataset)
 
     def generate_frequency_bands(self, dataset):
         # Will not check if last window is of size band_width
@@ -291,10 +318,11 @@ class ETL:
 
 if __name__ == "__main__":
     etl = ETL("/home/login/datasets/", window_sizes=[128, 256, 512, 1024])
-    etl.load("CIMA", tiny=True)
+    etl.load("CIMA", tiny=False)
     etl.resample()
     etl.remove_outliers(0.1)
     etl.smooth_sma(5)
     # etl.create_angles()
     # etl.save("CIMA_angles_resampled_clean")
-    etl.generate_fourier_dataset()
+    for window_size in etl.window_sizes:
+        etl.generate_fourier_data(window_size)
