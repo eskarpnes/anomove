@@ -7,7 +7,6 @@ import pickle
 from multiprocessing import Pool, Manager, cpu_count
 from scipy.signal import find_peaks
 
-
 def unit_vector(vector):
     return vector / np.linalg.norm(vector)
 
@@ -119,7 +118,8 @@ class ETL:
         data = item["data"]
         data = self.remove_outliers(data, 0.1)
         data = self.smooth_sma(data, 5)
-        data = self.create_angles(data)
+        # data = self.create_angles(data)
+        data = self.extrapolate_z_axis(data)
         item["data"] = data
         cima[key] = item
 
@@ -173,6 +173,48 @@ class ETL:
             slice = slice.fillna(method="bfill")
             data[columns[column_index]] = slice
         return data
+
+    def extrapolate_z_axis(self, data):
+        vectors = [
+            ("thorax", "right_shoulder"),
+            ("right_shoulder", "right_elbow"),
+            ("right_elbow", "right_wrist"),
+            ("thorax", "left_shoulder"),
+            ("left_shoulder", "left_elbow"),
+            ("left_elbow", "left_wrist"),
+            ("thorax", "pelvis"),
+            ("pelvis", "right_hip"),
+            ("right_hip", "right_knee"),
+            ("right_knee", "right_ankle"),
+            ("pelvis", "left_hip"),
+            ("left_hip", "left_knee"),
+            ("left_knee", "left_ankle")
+        ]
+        equivalents = [
+            (0, 3),
+            (1, 4),
+            (2, 5),
+            (7, 10),
+            (8, 11),
+            (9, 12)
+        ]
+        lengths = self.find_max_length(data, vectors)
+        for equivalent in equivalents:
+            lengths[equivalent[0]] = lengths[equivalent[1]] = max([lengths[equivalent[0]], lengths[equivalent[1]]])
+
+
+
+
+    def find_max_length(self, data, vectors):
+        lengths = [0 for i in range(len(vectors))]
+        for _, row in data.iterrows():
+            for i, vector in enumerate(vectors):
+                p0 = [row[vector[0] + "_x"], row[vector[0] + "_y"]]
+                p1 = [row[vector[1] + "_x"], row[vector[1] + "_y"]]
+                vec = np.array(p1) - np.array(p0)
+                length = np.sqrt(vec[0] ** 2 + vec[1] ** 2)
+                lengths[i] = length if length > lengths[i] else lengths[i]
+        return lengths
 
     def detect_movement(self, window, angle):
         points = []
@@ -263,6 +305,6 @@ class ETL:
 
 if __name__ == "__main__":
     etl = ETL("/home/login/datasets", [128, 256, 512, 1024])
-    etl.load("CIMA", tiny=True)
-    etl.preprocess_pooled()
-    etl.generate_fourier_dataset()
+    etl.load("CIMA_new", tiny=True)
+    etl.preprocess_item("new", etl.cima["new"], etl.cima)
+    # etl.generate_fourier_dataset()
