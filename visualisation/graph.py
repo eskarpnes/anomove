@@ -43,7 +43,7 @@ def plot_graph(title, x_label, y_label, data, figsize=[20, 9], x_lim=None, y_lim
         plt.show()
 
 
-def plot_scatter(title, x_label, y_label, x_data, y_data, figsize=[20, 9], x_lim=None, y_lim=None, subplots=None, save=False, grid=False, show=True):
+def plot_scatter(title, x_label, y_label, x_data, y_data, figsize=[20, 9], x_lim=None, y_lim=None, alpha=1, size=10, subplots=None, save=False, grid=False, show=True):
     colors = get_colors()
     if subplots is None:
         fig, ax = plt.subplots(figsize=figsize)
@@ -55,7 +55,7 @@ def plot_scatter(title, x_label, y_label, x_data, y_data, figsize=[20, 9], x_lim
         fig, ax = plt.subplots(rows, columns, figsize=figsize)
         axes = ax.flatten()
         for i in range(len(axes)):
-            axes[i].scatter(x_data[i], y_data[i], color=colors[i])
+            axes[i].scatter(x_data[i], y_data[i], color=colors[i], alpha=alpha, s=size)
             set_properties(axes[i], title, x_label, y_label, x_lim, y_lim, grid)
     if save:
         fig.savefig(title + ".png")

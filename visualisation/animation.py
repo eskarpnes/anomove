@@ -5,9 +5,6 @@ import numpy as np
 import os
 from tqdm import tqdm
 
-data_path = ""
-dataframe = pd.read_csv(os.path.join(data_path, "CIMA_short.csv"))
-
 vectors = [
     ("head_top", "nose"),
     ("nose", "right_ear"),
@@ -45,7 +42,7 @@ def lenght_color(length):
     red_val = 255 - length*3 if length < 85 else 0
     return (0, green_val, red_val)
 
-def draw_skeleton_cv2(row):
+def draw_skeleton(row):
     frame = np.full((height, width, 3), 220, np.uint8)
     # draw = ImageDraw.Draw(frame)
 
@@ -65,19 +62,17 @@ def draw_skeleton_cv2(row):
     frame_string = str(int(row["frame"]))
 
     font = cv2.FONT_HERSHEY_SIMPLEX
-    frame = cv2.putText(frame, frame_string, (10, height-10), font, 1, (255, 255, 255), 2, cv2.LINE_AA)
+    frame = cv2.putText(frame, frame_string, (10, height-10), font, 1, (0, 0, 0), 2, cv2.LINE_AA)
 
     return frame
 
-def animate(dataframe, video_name):
+def animate(dataframe, data_path, video_name):
     out_path = os.path.join(data_path, video_name + ".avi")
 
     out = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*'XVID'), 30.0, (width, height))
 
     for _, row in tqdm(dataframe.iterrows()):
-        frame = draw_skeleton_cv2(row)
+        frame = draw_skeleton(row)
         out.write(frame)
 
     out.release()
-
-animate(dataframe, "skeleton")
