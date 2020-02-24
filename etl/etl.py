@@ -7,6 +7,7 @@ import pickle
 from multiprocessing import Pool, Manager, cpu_count
 from scipy.signal import find_peaks
 
+
 def unit_vector(vector):
     return vector / np.linalg.norm(vector)
 
@@ -31,6 +32,18 @@ def get_vectors(points, row_data):
 def vector_length(vec):
     length = np.sqrt(vec[0] ** 2 + vec[1] ** 2)
     return length
+
+
+class Node:
+    def __init__(self, name, parent):
+        self.name = name
+        self.parent = parent
+        self.length = 0
+
+    def get_z_value(self, row):
+        dx = row[self.name + "_x"] - row[self.parent + "_x"]
+        dy = row[self.name + "_y"] - row[self.parent + "_y"]
+        return np.sqrt(self.length ** 2 + dx ** 2 + dy ** 2)
 
 
 class ETL:
@@ -101,6 +114,7 @@ class ETL:
 
     def preprocess_pooled(self):
         pbar = tqdm(total=len(self.cima))
+
         def update_progress(*a):
             pbar.update()
 
@@ -108,7 +122,7 @@ class ETL:
             synced_cima = manager.dict(self.cima)
             pool = Pool()
             for key, item in synced_cima.items():
-                pool.apply_async(self.preprocess_item, args=(key, item, synced_cima, ), callback=update_progress)
+                pool.apply_async(self.preprocess_item, args=(key, item, synced_cima,), callback=update_progress)
             pool.close()
             pool.join()
             self.cima = dict(synced_cima)
@@ -122,7 +136,6 @@ class ETL:
         data = self.extrapolate_z_axis(data)
         item["data"] = data
         cima[key] = item
-
 
     def resample(self, item, target_framerate=30):
         if item["fps"] == target_framerate:
@@ -159,7 +172,7 @@ class ETL:
             indices = np.append(peaks, neg_peaks)
 
             for index in indices:
-                slice[index] = (slice[index-1] + slice[index+1])/2
+                slice[index] = (slice[index - 1] + slice[index + 1]) / 2
 
             data[columns[column_index]] = slice
         return data
@@ -175,46 +188,46 @@ class ETL:
         return data
 
     def extrapolate_z_axis(self, data):
-        vectors = [
-            ("thorax", "right_shoulder"),
-            ("right_shoulder", "right_elbow"),
-            ("right_elbow", "right_wrist"),
-            ("thorax", "left_shoulder"),
-            ("left_shoulder", "left_elbow"),
-            ("left_elbow", "left_wrist"),
-            ("thorax", "pelvis"),
-            ("pelvis", "right_hip"),
-            ("right_hip", "right_knee"),
-            ("right_knee", "right_ankle"),
-            ("pelvis", "left_hip"),
-            ("left_hip", "left_knee"),
-            ("left_knee", "left_ankle")
+        nodes = [
+            Node("right_shoulder", "thorax"),
+            Node("right_elbow", "right_shoulder"),
+            Node("right_wrist", "right_elbow"),
+            Node("left_shoulder", "thorax"),
+            Node("left_elbow", "left_shoulder"),
+            Node("left_wrist", "left_elbow"),
+            Node("pelvis", "thorax"),
+            Node("right_hip", "pelvis"),
+            Node("right_knee", "right_hip"),
+            Node("right_ankle", "right_knee"),
+            Node("left_hip", "pelvis"),
+            Node("left_knee", "left_hip"),
+            Node("left_ankle", "left_knee")
         ]
-        equivalents = [
-            (0, 3),
-            (1, 4),
-            (2, 5),
-            (7, 10),
-            (8, 11),
-            (9, 12)
-        ]
-        lengths = self.find_max_length(data, vectors)
-        for equivalent in equivalents:
-            lengths[equivalent[0]] = lengths[equivalent[1]] = max([lengths[equivalent[0]], lengths[equivalent[1]]])
 
+        self.set_max_length(data, nodes)
 
+        z_dataframe = pd.DataFrame(columns=[node.name + "_z" for node in nodes])
 
+        for node in nodes:
+            for other_node in nodes:
+                if node.name.split("_")[-1] == other_node.name.split("_")[-1]:
+                    node.length = max(node.length, other_node.length)
 
-    def find_max_length(self, data, vectors):
-        lengths = [0 for i in range(len(vectors))]
+        for i, row in data.iterrows():
+            vals = {}
+            for node in nodes:
+                z = node.get_z_value(row)
+                vals[node.name + "_z"] = z
+            z_dataframe = z_dataframe.append(vals, ignore_index=True)
+
+    def set_max_length(self, data, nodes):
         for _, row in data.iterrows():
-            for i, vector in enumerate(vectors):
-                p0 = [row[vector[0] + "_x"], row[vector[0] + "_y"]]
-                p1 = [row[vector[1] + "_x"], row[vector[1] + "_y"]]
+            for i, node in enumerate(nodes):
+                p0 = [row[node.name + "_x"], row[node.name + "_y"]]
+                p1 = [row[node.parent + "_x"], row[node.parent + "_y"]]
                 vec = np.array(p1) - np.array(p0)
                 length = np.sqrt(vec[0] ** 2 + vec[1] ** 2)
-                lengths[i] = length if length > lengths[i] else lengths[i]
-        return lengths
+                node.length = length if length > node.length else node.length
 
     def detect_movement(self, window, angle):
         points = []
@@ -276,8 +289,9 @@ class ETL:
                 angle_data = window[angle]
                 angle_data = angle_data - angle_data.mean()
                 fourier_data = np.abs(np.fft.fft(angle_data))
-                dataset = dataset.append({"id": key, "label": item["label"], "data": list(fourier_data[1:window_size // 2])},
-                                         ignore_index=True)
+                dataset = dataset.append(
+                    {"id": key, "label": item["label"], "data": list(fourier_data[1:window_size // 2])},
+                    ignore_index=True)
         if self.bandwidth is not None:
             dataset = self.generate_frequency_bands(dataset)
         self.save_fourier_dataset(window_size, angle, dataset)
@@ -302,6 +316,7 @@ class ETL:
         if not os.path.exists(save_path):
             os.makedirs(save_path)
         data.to_json(os.path.join(save_path, angle + ".json"))
+
 
 if __name__ == "__main__":
     etl = ETL("/home/login/datasets", [128, 256, 512, 1024])
