@@ -118,7 +118,7 @@ class ETL:
             data["data"].to_csv(path)
 
     def key_chunks(self, dictionary, n):
-        keys = dictionary.keys()
+        keys = list(dictionary.keys())
         for i in range(0, len(keys), n):
             yield keys[i:i+n]
 
@@ -129,19 +129,20 @@ class ETL:
            pbar.update()
 
         with Manager() as manager:
-            synced_cima = manager.dict(self.cima)
-            batches = self.key_chunks(synced_cima, batch_size)
+            result = manager.dict()
+            batches = self.key_chunks(self.cima, batch_size)
             for batch in batches:
                 pool = Pool(batch_size)
                 for key in batch:
-                    pool.apply_async(self.preprocess_item, args=(key, synced_cima,))
+                    item = self.cima[key]
+                    pool.apply_async(self.preprocess_item, args=(key, item, result,))
+                    # self.preprocess_item(key, item, result)
                 pool.close()
                 pool.join()
                 update_progress()
-            self.cima = dict(synced_cima)
+            self.cima = dict(result)
 
-    def preprocess_item(self, key, cima):
-        item = cima[key]
+    def preprocess_item(self, key, item, result):
         item = self.resample(item)
         data = item["data"]
         data = self.remove_outliers(data, 0.1)
@@ -152,7 +153,8 @@ class ETL:
         item["data"] = data
         item["angles"] = angle_data
         item["z_interpolation"] = z_data
-        cima[key] = item
+        # print(f"Writing to key {key}")
+        result[key] = item
 
     def resample(self, item, target_framerate=30):
         if item["fps"] == target_framerate:
@@ -171,7 +173,7 @@ class ETL:
         data = data.reindex(time).interpolate(method="slinear")
         resampled_data = data.filter(items=interpolated_time, axis=0)
         resampled_data["frame"] = list(interpolated_frames)
-        resampled_data.set_index("frame")
+        resampled_data = resampled_data.set_index("frame")
 
         item["data"] = resampled_data
         item["fps"] = target_framerate
@@ -340,6 +342,5 @@ class ETL:
 if __name__ == "__main__":
     etl = ETL("/home/login/datasets", [128, 256, 512, 1024])
     etl.load("CIMA", tiny=False)
-    etl.preprocess_pooled(batch_size=4)
+    etl.preprocess_pooled()
     # etl.generate_fourier_dataset()
-    print("ueh")
