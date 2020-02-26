@@ -84,7 +84,7 @@ class ETL:
                     cima_files.append(os.path.join(root, filename))
 
         if tiny:
-            cima_files = cima_files[:12]
+            cima_files = cima_files[:5]
 
         for file in cima_files:
             file_name = file.split(os.sep)[-1].split(".")[0]
@@ -117,22 +117,31 @@ class ETL:
             path = os.path.join(save_data_path, key + ".csv")
             data["data"].to_csv(path)
 
-    def preprocess_pooled(self):
-        pbar = tqdm(total=len(self.cima))
+    def key_chunks(self, dictionary, n):
+        keys = dictionary.keys()
+        for i in range(0, len(keys), n):
+            yield keys[i:i+n]
+
+    def preprocess_pooled(self, batch_size=cpu_count()):
+        pbar = tqdm(total=int(np.ceil(len(self.cima) / batch_size)))
 
         def update_progress(*a):
-            pbar.update()
+           pbar.update()
 
         with Manager() as manager:
             synced_cima = manager.dict(self.cima)
-            pool = Pool()
-            for key, item in synced_cima.items():
-                pool.apply_async(self.preprocess_item, args=(key, item, synced_cima,), callback=update_progress)
-            pool.close()
-            pool.join()
+            batches = self.key_chunks(synced_cima, batch_size)
+            for batch in batches:
+                pool = Pool(batch_size)
+                for key in batch:
+                    pool.apply_async(self.preprocess_item, args=(key, synced_cima,))
+                pool.close()
+                pool.join()
+                update_progress()
             self.cima = dict(synced_cima)
 
-    def preprocess_item(self, key, item, cima):
+    def preprocess_item(self, key, cima):
+        item = cima[key]
         item = self.resample(item)
         data = item["data"]
         data = self.remove_outliers(data, 0.1)
@@ -329,8 +338,8 @@ class ETL:
 
 
 if __name__ == "__main__":
-    etl = ETL("", [128, 256, 512, 1024])
-    etl.load("CIMA_new", tiny=True)
-    etl.preprocess_item("new", etl.cima["new"], etl.cima)
+    etl = ETL("/home/login/datasets", [128, 256, 512, 1024])
+    etl.load("CIMA", tiny=False)
+    etl.preprocess_pooled(batch_size=4)
     # etl.generate_fourier_dataset()
     print("ueh")
