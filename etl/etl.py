@@ -18,19 +18,19 @@ def get_angle(vec1, vec2):
     return np.arccos(np.clip(np.dot(unit_vec1, unit_vec2), -1.0, 1.0))
 
 
-def get_vectors(points, row_data):
+def get_vectors(points, row_data, z_data):
     p0 = [row_data[points[0] + "_x"], row_data[points[0] + "_y"]]
     p1 = [row_data[points[1] + "_x"], row_data[points[1] + "_y"]]
     p2 = [row_data[points[2] + "_x"], row_data[points[2] + "_y"]]
     vec1 = np.array(p0) - np.array(p1)
-    vector_length(vec1)
-    vec2 = np.array(p2) - np.array(p1)
-    vector_length(vec2)
+    vec1 = np.append(vec1, z_data[points[1] + "_z"])
+    vec2 = vec2 = np.array(p2) - np.array(p1)
+    vec2 = np.append(vec2, z_data[points[2] + "_z"])
     return vec1, vec2
 
 
 def vector_length(vec):
-    length = np.sqrt(vec[0] ** 2 + vec[1] ** 2)
+    length = np.sqrt(vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2)
     return length
 
 
@@ -43,7 +43,10 @@ class Node:
     def get_z_value(self, row):
         dx = row[self.name + "_x"] - row[self.parent + "_x"]
         dy = row[self.name + "_y"] - row[self.parent + "_y"]
-        return np.sqrt(self.length ** 2 + dx ** 2 + dy ** 2)
+        dz = np.sqrt(np.abs(self.length ** 2 - dx ** 2 - dy ** 2))
+        if np.isnan(dz):
+            dz = 0
+        return dz
 
 
 class ETL:
@@ -56,12 +59,14 @@ class ETL:
         self.noise_reduction = noise_reduction
         self.MINIMAL_MOVEMENT = 0.02
         self.angles = {
-            "V1": ["upper_chest", "nose", "right_wrist"],
-            "V2": ["upper_chest", "nose", "left_wrist"],
-            "V3": ["upper_chest", "hip_center", "right_wrist"],
-            "V4": ["upper_chest", "hip_center", "left_wrist"],
-            "V5": ["hip_center", "upper_chest", "right_ankle"],
-            "V6": ["hip_center", "upper_chest", "left_ankle"],
+            "right_elbow": ["right_shoulder", "right_elbow", "right_wrist"],
+            "left_elbow": ["left_shoulder", "left_elbow", "left_wrist"],
+            "right_shoulder": ["thorax", "right_shoulder", "right_elbow"],
+            "left_shoulder": ["thorax", "left_shoulder", "left_elbow"],
+            "right_hip": ["pelvis", "right_hip", "right_knee"],
+            "left_hip": ["pelvis", "left_hip", "left_knee"],
+            "right_knee": ["right_hip", "right_knee", "right_ankle"],
+            "left_knee": ["left_hip", "left_knee", "left_ankle"]
         }
 
     def load(self, dataset, tiny=False):
@@ -133,8 +138,11 @@ class ETL:
         data = self.remove_outliers(data, 0.1)
         data = self.smooth_sma(data, 5)
         # data = self.create_angles(data)
-        data = self.extrapolate_z_axis(data)
+        z_data = self.extrapolate_z_axis(data)
+        angle_data = self.create_angles(data, z_data)
         item["data"] = data
+        item["angles"] = angle_data
+        item["z_interpolation"] = z_data
         cima[key] = item
 
     def resample(self, item, target_framerate=30):
@@ -220,6 +228,8 @@ class ETL:
                 vals[node.name + "_z"] = z
             z_dataframe = z_dataframe.append(vals, ignore_index=True)
 
+        return z_dataframe
+
     def set_max_length(self, data, nodes):
         for _, row in data.iterrows():
             for i, node in enumerate(nodes):
@@ -238,17 +248,17 @@ class ETL:
         differences = [window[column].max() - window[column].min() for column in window]
         return any([difference > self.MINIMAL_MOVEMENT for difference in differences])
 
-    def create_angles(self, data):
+    def create_angles(self, data, z_data):
         angles = {key: [] for key in self.angles.keys()}
-        for row in data.iterrows():
-            row_data = row[1]
+        for i, row in data.iterrows():
             for angle_key, points in self.angles.items():
-                vec1, vec2 = get_vectors(points, row_data)
-                angle = np.abs(np.math.atan2(np.linalg.det([vec1, vec2]), np.dot(vec1, vec2)))
+                vec1, vec2 = get_vectors(points, row, z_data.iloc[i, :])
+                dot_product = np.dot(vec1, vec2)
+                angle = np.math.acos(dot_product / (vector_length(vec1) * vector_length(vec2)))
+                # angle = np.abs(np.math.atan2(np.linalg.det([vec1, vec2]), np.dot(vec1, vec2)))
                 angles[angle_key].append(angle)
-        for new_key, angles_list in angles.items():
-            data[new_key] = angles_list
-        return data
+        angle_dataframe = pd.DataFrame(angles)
+        return angle_dataframe
 
     def generate_fourier_dataset(self):
         num_processes = len(self.window_sizes) * len(self.angles.keys())
@@ -319,7 +329,8 @@ class ETL:
 
 
 if __name__ == "__main__":
-    etl = ETL("/home/login/datasets", [128, 256, 512, 1024])
+    etl = ETL("", [128, 256, 512, 1024])
     etl.load("CIMA_new", tiny=True)
     etl.preprocess_item("new", etl.cima["new"], etl.cima)
     # etl.generate_fourier_dataset()
+    print("ueh")
