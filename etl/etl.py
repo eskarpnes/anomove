@@ -6,13 +6,16 @@ import matplotlib.pyplot as plt
 import pickle
 from multiprocessing import Pool, Manager, cpu_count
 from scipy.signal import find_peaks
+import shutil
 
 
 def unit_vector(vector):
+    # TODO delete
     return vector / np.linalg.norm(vector)
 
 
 def get_angle(vec1, vec2):
+    # TODO delete
     unit_vec1 = unit_vector(vec1)
     unit_vec2 = unit_vector(vec2)
     return np.arccos(np.clip(np.dot(unit_vec1, unit_vec2), -1.0, 1.0))
@@ -50,7 +53,18 @@ class Node:
 
 
 class ETL:
-    def __init__(self, data_path, window_sizes, bandwidth=5, pooling="mean", noise_reduction=["movement"]):
+    def __init__(
+            self,
+             data_path,
+             window_sizes,
+             size=0,
+             bandwidth=5,
+             pooling="mean",
+             noise_reduction=["movement"],
+             random_seed=np.random.randint(1000),
+             sma_window=5
+    ):
+
         self.DATA_PATH = data_path
         self.cima = {}
         self.window_sizes = window_sizes
@@ -58,6 +72,9 @@ class ETL:
         self.pooling = pooling
         self.noise_reduction = noise_reduction
         self.MINIMAL_MOVEMENT = 0.02
+        self.random_seed = random_seed
+        self.size = size
+        self.sma_window = sma_window
         self.angles = {
             "right_elbow": ["right_shoulder", "right_elbow", "right_wrist"],
             "left_elbow": ["left_shoulder", "left_elbow", "left_wrist"],
@@ -69,7 +86,16 @@ class ETL:
             "left_knee": ["left_hip", "left_knee", "left_ankle"]
         }
 
-    def load(self, dataset, tiny=False):
+    def load(self, dataset):
+
+        cima_id = f"{self.size}_{self.sma_window}"
+        save_path = os.path.join("cache", cima_id)
+
+        if os.path.exists(save_path):
+            with open(save_path, "rb") as f:
+                self.cima = pickle.load(f)
+                return
+
         cima_files = []
         missing_metadata = []
         cima_path = os.path.join(self.DATA_PATH, dataset)
@@ -83,8 +109,20 @@ class ETL:
                 if filename[-4:] == ".csv":
                     cima_files.append(os.path.join(root, filename))
 
-        if tiny:
-            cima_files = cima_files[:5]
+        self.check_metadata(cima_files, cima_path)
+
+        if self.size != 0:
+            healthy = self.metadata.loc[self.metadata["CP"] == 0]
+            impaired = self.metadata.loc[self.metadata["CP"] == 1]
+
+            healthy_ids = list(healthy.sample(self.size-self.size//10, random_state=self.random_seed)["ID"])
+            impaired_ids = list(impaired.sample(self.size//10, random_state=self.random_seed)["ID"])
+
+            all_ids = []
+            all_ids.extend(healthy_ids)
+            all_ids.extend(impaired_ids)
+
+            cima_files = [os.path.join(cima_path, infant_id + ".csv") for infant_id in all_ids]
 
         for file in cima_files:
             file_name = file.split(os.sep)[-1].split(".")[0]
@@ -96,11 +134,20 @@ class ETL:
             data = pd.read_csv(file)
             self.cima[file_id] = {"data": data, "label": meta_row.iloc[0]["CP"], "fps": meta_row.iloc[0]["FPS"]}
 
+    def check_metadata(self, cima_files, cima_path):
+        missing_files = []
+        for i, row in self.metadata.iterrows():
+            path = os.path.join(cima_path, row["ID"] + ".csv")
+            if not path in cima_files:
+                missing_files.append(i)
+        self.metadata = self.metadata.drop(missing_files)
+
     def load_metadata(self, dataset):
         meta_path = os.path.join(self.DATA_PATH, dataset, "metadata.csv")
         self.metadata = pd.read_csv(meta_path)
 
     def save(self, name="CIMA_Transformed"):
+        # TODO delete
         save_path = os.path.join(self.DATA_PATH, name)
         if not os.path.exists(save_path):
             os.makedirs(save_path)
@@ -123,30 +170,57 @@ class ETL:
             yield keys[i:i+n]
 
     def preprocess_pooled(self, batch_size=cpu_count()):
+
+        cima_id = f"{self.size}_{self.sma_window}"
+        save_path = os.path.join("cache", cima_id)
+
+        if os.path.exists(save_path):
+            print("Using cached preprocessed dataset")
+            return
+
         pbar = tqdm(total=int(np.ceil(len(self.cima) / batch_size)))
 
         def update_progress(*a):
            pbar.update()
 
-        with Manager() as manager:
-            result = manager.dict()
-            batches = self.key_chunks(self.cima, batch_size)
-            for batch in batches:
-                pool = Pool(batch_size)
-                for key in batch:
-                    item = self.cima[key]
-                    pool.apply_async(self.preprocess_item, args=(key, item, result,))
-                    # self.preprocess_item(key, item, result)
-                pool.close()
-                pool.join()
-                update_progress()
-            self.cima = dict(result)
+        if os.path.exists("tmp"):
+            shutil.rmtree("tmp")
 
-    def preprocess_item(self, key, item, result):
+        os.mkdir("tmp")
+
+        batches = self.key_chunks(self.cima, batch_size)
+        for batch in batches:
+            pool = Pool(batch_size)
+            for key in batch:
+                item = self.cima[key]
+                pool.apply_async(self.preprocess_item, args=(key, item,))
+            pool.close()
+            pool.join()
+            update_progress()
+
+        pbar.close()
+
+        for key in os.listdir("tmp"):
+            path = os.path.join("tmp", key)
+            with open(path, "rb") as f:
+                self.cima[key] = pickle.load(f)
+
+        shutil.rmtree("tmp")
+
+        if not os.path.exists("cache"):
+            os.mkdir("cache")
+
+        with open(save_path, "wb") as f:
+            pickle.dump(self.cima, f)
+
+
+
+
+    def preprocess_item(self, key, item):
         item = self.resample(item)
         data = item["data"]
         data = self.remove_outliers(data, 0.1)
-        data = self.smooth_sma(data, 5)
+        data = self.smooth_sma(data, self.sma_window)
         # data = self.create_angles(data)
         z_data = self.extrapolate_z_axis(data)
         angle_data = self.create_angles(data, z_data)
@@ -154,7 +228,9 @@ class ETL:
         item["angles"] = angle_data
         item["z_interpolation"] = z_data
         # print(f"Writing to key {key}")
-        result[key] = item
+        save_path = os.path.join("tmp", key)
+        with open(save_path, "wb") as f:
+            pickle.dump(item, f)
 
     def resample(self, item, target_framerate=30):
         if item["fps"] == target_framerate:
@@ -255,6 +331,7 @@ class ETL:
         for point in self.angles[angle]:
             points.append(point + "_x")
             points.append(point + "_y")
+            points.append(point + "_z")
         window = window.filter(items=points)
         differences = [window[column].max() - window[column].min() for column in window]
         return any([difference > self.MINIMAL_MOVEMENT for difference in differences])
@@ -266,7 +343,6 @@ class ETL:
                 vec1, vec2 = get_vectors(points, row, z_data.iloc[i, :])
                 dot_product = np.dot(vec1, vec2)
                 angle = np.math.acos(dot_product / (vector_length(vec1) * vector_length(vec2)))
-                # angle = np.abs(np.math.atan2(np.linalg.det([vec1, vec2]), np.dot(vec1, vec2)))
                 angles[angle_key].append(angle)
         angle_dataframe = pd.DataFrame(angles)
         return angle_dataframe
@@ -292,24 +368,28 @@ class ETL:
             pool.close()
             pool.join()
 
+        pbar.close()
+
     def generate_fourier_all_angles(self, window_size):
+        # TODO delete
         for angle in self.angles.keys():
             self.generate_fourier_data(window_size, angle)
 
     def generate_fourier_data(self, window_size, angle):
         dataset = pd.DataFrame(columns=["label", "data"])
         for key, item in self.cima.items():
+            angles = item["angles"]
             data = item["data"]
-            data = data.set_index("frame")
+            z_data = item["z_interpolation"]
             for i in range(0, len(data), window_size):
-                window = data.loc[i:i + window_size - 1, :]
+                window = data.loc[i:i + window_size - 1, :].join(z_data.loc[i:i + window_size - 1, :])
                 if len(window) < window_size:
                     continue
                 if "movement" in self.noise_reduction and not self.detect_movement(window, angle):
                     continue
-                angle_data = window[angle]
-                angle_data = angle_data - angle_data.mean()
-                fourier_data = np.abs(np.fft.fft(angle_data))
+                angle_window = angles.loc[i:i + window_size - 1, angle]
+                angle_window = angle_window - angle_window.mean()
+                fourier_data = np.abs(np.fft.fft(angle_window))
                 dataset = dataset.append(
                     {"id": key, "label": item["label"], "data": list(fourier_data[1:window_size // 2])},
                     ignore_index=True)
@@ -340,7 +420,7 @@ class ETL:
 
 
 if __name__ == "__main__":
-    etl = ETL("/home/login/datasets", [128, 256, 512, 1024])
-    etl.load("CIMA", tiny=False)
+    etl = ETL("/home/login/datasets", [128, 256, 512, 1024], size=100)
+    etl.load("CIMA")
     etl.preprocess_pooled()
-    # etl.generate_fourier_dataset()
+    etl.generate_fourier_dataset()
