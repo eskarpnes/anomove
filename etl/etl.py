@@ -27,7 +27,7 @@ def get_vectors(points, row_data, z_data):
     p2 = [row_data[points[2] + "_x"], row_data[points[2] + "_y"]]
     vec1 = np.array(p0) - np.array(p1)
     vec1 = np.append(vec1, z_data[points[1] + "_z"])
-    vec2 = vec2 = np.array(p2) - np.array(p1)
+    vec2 = np.array(p2) - np.array(p1)
     vec2 = np.append(vec2, z_data[points[2] + "_z"])
     return vec1, vec2
 
