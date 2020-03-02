@@ -217,6 +217,9 @@ class ETL:
 
 
     def preprocess_item(self, key, item):
+        # Last 10-20 frames are often corrupted, remove last 100 to be sure
+        item["data"] = item["data"].iloc[:-100, :]
+
         item = self.resample(item)
         data = item["data"]
         data = self.remove_outliers(data, 0.1)
