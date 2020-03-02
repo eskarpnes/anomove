@@ -43,6 +43,7 @@ def plot_graph(title, x_label, y_label, data, figsize=[20, 9], x_lim=None, y_lim
     if save:
         path = os.path.join(save_path, title + ".png")
         fig.savefig(path)
+        plt.close()
 
     if show:
         plt.show()
@@ -66,6 +67,7 @@ def plot_scatter(title, x_label, y_label, x_data, y_data, figsize=[20, 9], x_lim
     if save:
         path = os.path.join(save_path, title + ".png")
         fig.savefig(path)
+        plt.close()
 
     if show:
         plt.show()
