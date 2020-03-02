@@ -347,7 +347,7 @@ class ETL:
         angle_dataframe = pd.DataFrame(angles)
         return angle_dataframe
 
-    def generate_fourier_dataset(self):
+    def generate_fourier_dataset(self, window_overlap=1):
         num_processes = len(self.window_sizes) * len(self.angles.keys())
         if cpu_count() > 12:
             pool = Pool(num_processes)
@@ -360,7 +360,7 @@ class ETL:
             if cpu_count() <= 12:
                 pool = Pool(6)
             for angle in self.angles.keys():
-                pool.apply_async(self.generate_fourier_data, args=(window_size, angle,), callback=update_progress)
+                pool.apply_async(self.generate_fourier_data, args=(window_size, angle, window_size//window_overlap,), callback=update_progress)
             if cpu_count() <= 12:
                 pool.close()
                 pool.join()
@@ -375,13 +375,13 @@ class ETL:
         for angle in self.angles.keys():
             self.generate_fourier_data(window_size, angle)
 
-    def generate_fourier_data(self, window_size, angle):
+    def generate_fourier_data(self, window_size, angle, window_step):
         dataset = pd.DataFrame(columns=["label", "data"])
         for key, item in self.cima.items():
             angles = item["angles"]
             data = item["data"]
             z_data = item["z_interpolation"]
-            for i in range(0, len(data), window_size):
+            for i in range(0, len(data), window_step):
                 window = data.loc[i:i + window_size - 1, :].join(z_data.loc[i:i + window_size - 1, :])
                 if len(window) < window_size:
                     continue
@@ -420,7 +420,7 @@ class ETL:
 
 
 if __name__ == "__main__":
-    etl = ETL("/home/login/datasets", [128, 256, 512, 1024], size=100)
+    etl = ETL("/home/login/datasets", [128, 256, 512, 1024], size=16)
     etl.load("CIMA")
     etl.preprocess_pooled()
-    etl.generate_fourier_dataset()
+    etl.generate_fourier_dataset(window_overlap=4)
