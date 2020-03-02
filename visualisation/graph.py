@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
-import numpy as np
+import os
+
 
 def get_colors():
     return ["red",
@@ -14,6 +15,7 @@ def get_colors():
             "navy"
             ]
 
+
 def set_properties(ax, title, x_label, y_label, x_lim, y_lim, grid):
     ax.set_title(title)
     ax.set_xlabel(x_label)
@@ -22,11 +24,13 @@ def set_properties(ax, title, x_label, y_label, x_lim, y_lim, grid):
     ax.set_ylim(y_lim)
     ax.grid(grid)
 
-def plot_graph(title, x_label, y_label, data, figsize=[20, 9], x_lim=None, y_lim=None, subplots=None, save=False, grid=False, show=True):
+
+def plot_graph(title, x_label, y_label, data, figsize=[20, 9], x_lim=None, y_lim=None, subplots=None, save=False,
+               grid=False, show=True, save_path=""):
     colors = get_colors()
     if subplots is None:
         fig, ax = plt.subplots(figsize=figsize)
-        ax.plot(data, color= colors[0])
+        ax.plot(data, color=colors[0])
         set_properties(ax, title, x_label, y_label, x_lim, y_lim, grid)
     else:
         rows = subplots[0]
@@ -37,13 +41,15 @@ def plot_graph(title, x_label, y_label, data, figsize=[20, 9], x_lim=None, y_lim
             axes[i].plot(data[i], color=colors[i])
             set_properties(axes[i], title, x_label, y_label, x_lim, y_lim, grid)
     if save:
-        fig.savefig(title + ".png")
+        path = os.path.join(save_path, title + ".png")
+        fig.savefig(path)
 
     if show:
         plt.show()
 
 
-def plot_scatter(title, x_label, y_label, x_data, y_data, figsize=[20, 9], x_lim=None, y_lim=None, alpha=1, size=10, subplots=None, save=False, grid=False, show=True):
+def plot_scatter(title, x_label, y_label, x_data, y_data, figsize=[20, 9], x_lim=None, y_lim=None, alpha=1, size=10,
+                 subplots=None, save=False, grid=False, show=True, save_path=""):
     colors = get_colors()
     if subplots is None:
         fig, ax = plt.subplots(figsize=figsize)
@@ -58,7 +64,8 @@ def plot_scatter(title, x_label, y_label, x_data, y_data, figsize=[20, 9], x_lim
             axes[i].scatter(x_data[i], y_data[i], color=colors[i], alpha=alpha, s=size)
             set_properties(axes[i], title, x_label, y_label, x_lim, y_lim, grid)
     if save:
-        fig.savefig(title + ".png")
+        path = os.path.join(save_path, title + ".png")
+        fig.savefig(path)
 
     if show:
         plt.show()
