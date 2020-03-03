@@ -85,11 +85,6 @@ def get_models():
             "parameters": {}
         },
         {
-            "model": COF,
-            "supervised": False,
-            "parameters": {}
-        },
-        {
             "model": CBLOF,
             "supervised": False,
             "parameters": {}
@@ -214,6 +209,6 @@ if __name__ == '__main__':
     angles = ["shoulder", "elbow", "hip", "knee"]
 
     # multi.freeze_support()
-    run_search(DATA_PATH, window_sizes, angles, size=24)
+    run_search(DATA_PATH, window_sizes, angles)
     analyse.print_results("model_search_results.csv")
 
