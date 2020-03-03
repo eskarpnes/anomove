@@ -221,11 +221,11 @@ def async_model_testing(model_data, model, synced_result, angle, window_size):
     })
 
 if __name__ == '__main__':
-    DATA_PATH = "/home/login/datasets"
+    DATA_PATH = "/home/erlend/datasets"
     window_sizes = [128, 256, 512, 1024]
     angles = ["shoulder", "elbow", "hip", "knee"]
 
     # freeze_support()
-    run_search(DATA_PATH, window_sizes, angles, size=16)
+    run_search(DATA_PATH, window_sizes, angles)
     analyse.print_results("model_search_results.csv")
 
