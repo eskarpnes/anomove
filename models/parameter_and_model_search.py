@@ -23,6 +23,7 @@ from models import analyse_results as analyse
 def get_search_parameter():
     parameters = {
         "noise_reduction": ["movement"],
+        "minimal_movement": [0.02, 0.04, 0.1],
         "pooling": ["mean", "max"],
         "sma": [3, 5],
         "bandwidth": [None, 3, 5],
@@ -141,23 +142,28 @@ def run_search(path, window_sizes, angles, size=0):
     models = get_models()
 
     results = pd.DataFrame(
-        columns=["model", "model_parameter", "noise_reduction", "bandwidth", "pooling", "window_overlap", "pca", "window_size", "angle",
+        columns=["model", "model_parameter", "noise_reduction", "minimal_movement", "bandwidth", "pooling", "sma", "window_overlap", "pca", "window_size", "angle",
                  "sensitivity", "specificity"]
     )
 
-    pbar = tqdm(total=(len(grid)*len(models)*len(window_sizes)*len(angles)))
+    pbar = tqdm(total=len(grid))
 
     for i, params in enumerate(grid):
+        print(f"Running with params {params}")
         etl = ETL(
             data_path=DATA_PATH,
             window_sizes=window_sizes,
             bandwidth=params["bandwidth"],
             pooling=params["pooling"],
+            sma_window=params["sma"],
             noise_reduction=params["noise_reduction"],
+            minimal_movement=params["minimal_movement"],
             size=size
         )
         etl.load("CIMA")
+        print("Preprocessing data.")
         etl.preprocess_pooled()
+        print("Generating fourier data.")
         etl.generate_fourier_dataset(window_overlap=params["window_overlap"])
 
         for window_size in window_sizes:
@@ -193,8 +199,10 @@ def run_search(path, window_sizes, angles, size=0):
                         "model": model["model"],
                         "model_parameter": model["parameters"],
                         "noise_reduction": params["noise_reduction"],
+                        "minimal_movement": params["minimal_movement"],
                         "bandwidth": params["bandwidth"],
                         "pooling": params["pooling"],
+                        "sma": params["sma"],
                         "window_overlap": params["window_overlap"],
                         "pca": params["pca"],
                         "window_size": str(window_size),
@@ -202,16 +210,17 @@ def run_search(path, window_sizes, angles, size=0):
                         "sensitivity": sensitivity,
                         "specificity": specificity
                     }, ignore_index=True)
-                    pbar.update()
-    results.to_csv("model_search_results.csv")
+        pbar.update()
+        print("Checkpoint created.")
+        results.to_csv("model_search_results.csv")
     pbar.close()
 
 if __name__ == '__main__':
-    DATA_PATH = "/home/erlend/datasets"
+    DATA_PATH = "/home/login/datasets"
     window_sizes = [128, 256, 512, 1024]
     angles = ["shoulder", "elbow", "hip", "knee"]
 
     # multi.freeze_support()
-    run_search(DATA_PATH, window_sizes, angles)
+    run_search(DATA_PATH, window_sizes, angles, size=24)
     analyse.print_results("model_search_results.csv")
 

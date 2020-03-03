@@ -55,14 +55,15 @@ class Node:
 class ETL:
     def __init__(
             self,
-             data_path,
-             window_sizes,
-             size=0,
-             bandwidth=5,
-             pooling="mean",
-             noise_reduction=["movement"],
-             random_seed=np.random.randint(1000),
-             sma_window=5
+            data_path,
+            window_sizes,
+            size=0,
+            bandwidth=5,
+            pooling="mean",
+            noise_reduction=["movement"],
+            minimal_movement=0.02,
+            random_seed=np.random.randint(1000),
+            sma_window=5
     ):
 
         self.DATA_PATH = data_path
@@ -71,7 +72,7 @@ class ETL:
         self.bandwidth = bandwidth
         self.pooling = pooling
         self.noise_reduction = noise_reduction
-        self.MINIMAL_MOVEMENT = 0.02
+        self.MINIMAL_MOVEMENT = minimal_movement
         self.random_seed = random_seed
         self.size = size
         self.sma_window = sma_window
@@ -88,7 +89,7 @@ class ETL:
 
     def load(self, dataset):
 
-        cima_id = f"{self.size}_{self.sma_window}"
+        cima_id = f"{self.size}_{self.sma_window}_{self.MINIMAL_MOVEMENT}"
         save_path = os.path.join("cache", cima_id)
 
         if os.path.exists(save_path):
@@ -171,7 +172,7 @@ class ETL:
 
     def preprocess_pooled(self, batch_size=cpu_count()):
 
-        cima_id = f"{self.size}_{self.sma_window}"
+        cima_id = f"{self.size}_{self.sma_window}_{self.MINIMAL_MOVEMENT}"
         save_path = os.path.join("cache", cima_id)
 
         if os.path.exists(save_path):
