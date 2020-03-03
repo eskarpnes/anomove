@@ -178,10 +178,11 @@ class ETL:
             print("Using cached preprocessed dataset")
             return
 
-        pbar = tqdm(total=int(np.ceil(len(self.cima) / batch_size)))
+        # pbar = tqdm(total=int(np.ceil(len(self.cima) / batch_size)))
 
         def update_progress(*a):
-           pbar.update()
+           #pbar.update()
+            pass
 
         if os.path.exists("tmp"):
             shutil.rmtree("tmp")
@@ -198,7 +199,7 @@ class ETL:
             pool.join()
             update_progress()
 
-        pbar.close()
+        # pbar.close()
 
         for key in os.listdir("tmp"):
             path = os.path.join("tmp", key)
@@ -354,10 +355,11 @@ class ETL:
         num_processes = len(self.window_sizes) * len(self.angles.keys())
         if cpu_count() > 12:
             pool = Pool(num_processes)
-        pbar = tqdm(total=num_processes)
+        # pbar = tqdm(total=num_processes)
 
         def update_progress(*a):
-            pbar.update()
+            # pbar.update()
+            pass
 
         for window_size in self.window_sizes:
             if cpu_count() <= 12:
@@ -371,7 +373,7 @@ class ETL:
             pool.close()
             pool.join()
 
-        pbar.close()
+        # pbar.close()
 
     def generate_fourier_all_angles(self, window_size):
         # TODO delete
