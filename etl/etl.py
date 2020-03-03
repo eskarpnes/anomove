@@ -356,11 +356,10 @@ class ETL:
         num_processes = len(self.window_sizes) * len(self.angles.keys())
         if cpu_count() > 12:
             pool = Pool(num_processes)
-        # pbar = tqdm(total=num_processes)
+        pbar = tqdm(total=num_processes)
 
         def update_progress(*a):
-            # pbar.update()
-            pass
+            pbar.update()
 
         for window_size in self.window_sizes:
             if cpu_count() <= 12:
@@ -373,8 +372,7 @@ class ETL:
         if cpu_count() > 12:
             pool.close()
             pool.join()
-
-        # pbar.close()
+        pbar.close()
 
     def generate_fourier_all_angles(self, window_size):
         # TODO delete
