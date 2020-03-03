@@ -36,71 +36,61 @@ def get_models():
     models = [
         {
             "model": ABOD,
-            "fit_x_and_y": False,
+            "supervised": False,
             "parameters": {}
         },
         {
             "model": KNN,
-            "fit_x_and_y": False,
+            "supervised": False,
             "parameters": {
                 "n_neighbors": 2
             }
         },
         {
             "model": KNN,
-            "fit_x_and_y": False,
+            "supervised": False,
             "parameters": {
                 "n_neighbors": 5
             }
         },
         {
             "model": LOF,
-            "fit_x_and_y": False,
+            "supervised": False,
             "parameters": {
                 "n_neighbors": 2
             }
         },
         {
             "model": LOF,
-            "fit_x_and_y": False,
+            "supervised": False,
             "parameters": {
                 "n_neighbors": 5
             }
         },
-        {
-            "model": SOD,
-            "fit_x_and_y": False,
-            "parameters": {
-
-            }
-        },
+        # {
+        #     "model": SOD,
+        #     "supervised": False,
+        #     "parameters": {}
+        # },
         {
             "model": OCSVM,
-            "fit_x_and_y": False,
-            "parameters": {
-
-            }
+            "supervised": False,
+            "parameters": {}
         },
         {
             "model": HBOS,
-            "fit_x_and_y": False,
-            "parameters": {
-
-            }
+            "supervised": False,
+            "parameters": {}
         },
         {
             "model": COF,
-            "fit_x_and_y": False,
-            "parameters": {
-
-            }
+            "supervised": False,
+            "parameters": {}
         },
         {
             "model": CBLOF,
-            "fit_x_and_y": False,
-            "parameters": {
-
-            }
+            "supervised": False,
+            "parameters": {}
         },
         ]
     return models
@@ -110,7 +100,7 @@ def model_testing(data, model):
 
     clf = model["model"](**model["parameters"])
 
-    if model["fit_x_and_y"]:
+    if model["supervised"]:
         clf.fit(X_train, y_train)
     else:
         clf.fit(X_train)
