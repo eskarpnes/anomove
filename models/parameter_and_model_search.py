@@ -1,4 +1,5 @@
 import sys
+sys.path.append('../')
 import time
 import os
 import pandas as pd
@@ -17,7 +18,6 @@ from sklearn import model_selection, neighbors, metrics
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from models import analyse_results as analyse
-sys.path.append('../')
 
 
 def get_search_parameter():
