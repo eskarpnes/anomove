@@ -68,13 +68,6 @@ def get_models():
             }
         },
         {
-            "model": SOD,
-            "supervised": False,
-            "parameters": {
-                "n_neighbors": 10
-            }
-        },
-        {
             "model": OCSVM,
             "supervised": False,
             "parameters": {}
