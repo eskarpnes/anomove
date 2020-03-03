@@ -139,7 +139,7 @@ def run_search(path, window_sizes, angles, size=0):
     pbar = tqdm(total=len(grid))
 
     for i, params in enumerate(grid):
-        print(f"Running with params {params}")
+        print(f"Running with params: \n{params}")
         etl = ETL(
             data_path=DATA_PATH,
             window_sizes=window_sizes,
@@ -151,9 +151,9 @@ def run_search(path, window_sizes, angles, size=0):
             size=size
         )
         etl.load("CIMA")
-        print("Preprocessing data.")
+        print("\nPreprocessing data.")
         etl.preprocess_pooled()
-        print("Generating fourier data.")
+        print("\nGenerating fourier data.")
         etl.generate_fourier_dataset(window_overlap=params["window_overlap"])
 
         for window_size in window_sizes:
@@ -201,12 +201,12 @@ def run_search(path, window_sizes, angles, size=0):
                         "specificity": specificity
                     }, ignore_index=True)
         pbar.update()
-        print("Checkpoint created.")
+        print("\nCheckpoint created.")
         results.to_csv("model_search_results.csv")
     pbar.close()
 
 if __name__ == '__main__':
-    DATA_PATH = "/home/login/datasets"
+    DATA_PATH = "/home/erlend/datasets"
     window_sizes = [128, 256, 512, 1024]
     angles = ["shoulder", "elbow", "hip", "knee"]
 
