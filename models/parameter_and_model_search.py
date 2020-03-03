@@ -207,7 +207,7 @@ def run_search(path, window_sizes, angles, size=0):
 
 def async_model_testing(model_data, model, synced_result, angle):
     try:
-        print(f"Started fitting {model['model']}")
+        # print(f"Started fitting {model['model']}")
         sensitivity, specificity = model_testing(model_data, model)
     except:
         print(f"{model['model']} crashed.")
