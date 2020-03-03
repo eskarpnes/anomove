@@ -7,6 +7,11 @@ import multiprocessing as multi
 from pyod.models.knn import KNN
 from pyod.models.lof import LOF
 from pyod.models.abod import ABOD
+from pyod.models.sod import SOD
+from pyod.models.ocsvm import OCSVM
+from pyod.models.hbos import HBOS
+from pyod.models.cof import COF
+from pyod.models.cblof import CBLOF
 from etl.etl import ETL
 from sklearn import model_selection, neighbors, metrics
 from sklearn.decomposition import PCA
@@ -18,10 +23,11 @@ sys.path.append('../')
 def get_search_parameter():
     parameters = {
         "noise_reduction": ["movement"],
-        "pooling": ["mean"],
-        "bandwidth": [5],
-        "pca": [5, 10],
-        "window_overlap": [1]
+        "pooling": ["mean", "max"],
+        "sma": [3, 5],
+        "bandwidth": [None, 3, 5],
+        "pca": [None, 2, 5, 10],
+        "window_overlap": [1, 4, 8]
     }
     return parameters
 
@@ -58,6 +64,41 @@ def get_models():
             "fit_x_and_y": False,
             "parameters": {
                 "n_neighbors": 5
+            }
+        },
+        {
+            "model": SOD,
+            "fit_x_and_y": False,
+            "parameters": {
+
+            }
+        },
+        {
+            "model": OCSVM,
+            "fit_x_and_y": False,
+            "parameters": {
+
+            }
+        },
+        {
+            "model": HBOS,
+            "fit_x_and_y": False,
+            "parameters": {
+
+            }
+        },
+        {
+            "model": COF,
+            "fit_x_and_y": False,
+            "parameters": {
+
+            }
+        },
+        {
+            "model": CBLOF,
+            "fit_x_and_y": False,
+            "parameters": {
+
             }
         },
         ]
@@ -103,8 +144,6 @@ def run_search(path, window_sizes, angles, size=0):
         columns=["model", "model_parameter", "noise_reduction", "bandwidth", "pooling", "window_overlap", "pca", "window_size", "angle",
                  "sensitivity", "specificity"]
     )
-
-    # print(f"{len(grid)} different combinations of parameters will be explored.")
 
     pbar = tqdm(total=(len(grid)*len(models)*len(window_sizes)*len(angles)))
 
@@ -168,11 +207,11 @@ def run_search(path, window_sizes, angles, size=0):
     pbar.close()
 
 if __name__ == '__main__':
-    DATA_PATH = "/home/login/datasets"
-    window_sizes = [128, 256, 512]
+    DATA_PATH = "/home/erlend/datasets"
+    window_sizes = [128, 256, 512, 1024]
     angles = ["shoulder", "elbow", "hip", "knee"]
 
     # multi.freeze_support()
-    run_search(DATA_PATH, window_sizes, angles, size=64)
+    run_search(DATA_PATH, window_sizes, angles)
     analyse.print_results("model_search_results.csv")
 
