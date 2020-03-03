@@ -67,11 +67,13 @@ def get_models():
                 "n_neighbors": 5
             }
         },
-        # {
-        #     "model": SOD,
-        #     "supervised": False,
-        #     "parameters": {}
-        # },
+        {
+            "model": SOD,
+            "supervised": False,
+            "parameters": {
+                "n_neighbors": 10
+            }
+        },
         {
             "model": OCSVM,
             "supervised": False,
@@ -168,7 +170,7 @@ def run_search(path, window_sizes, angles, size=0):
                 df_features = pd.DataFrame(df.data.tolist())
 
                 for model in models:
-                    print(f"\n Testing model {model}")
+                    print(f"\n Testing model {model['model']} at time {time.strftime('%H:%M:%S',  time.gmtime())}")
                     try:
                         if params["pca"] is not None:
                             pca = PCA(n_components=params["pca"])
