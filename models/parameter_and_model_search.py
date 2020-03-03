@@ -153,11 +153,12 @@ def run_search(path, window_sizes, angles, size=0):
         print("\nGenerating fourier data.")
         etl.generate_fourier_dataset(window_overlap=params["window_overlap"])
 
-        with Manager() as manager:
-            print("Starting a pool of model fitting.")
-            synced_results = manager.list()
-            pool = Pool()
-            for window_size in window_sizes:
+        for window_size in window_sizes:
+            with Manager() as manager:
+                print("Starting a pool of model fitting.")
+                synced_results = manager.list()
+                pool = Pool()
+
                 for angle in angles:
                     RIGHT_FOURIER_PATH = os.path.join(DATA_PATH, str(window_size), "right_" + angle + ".json")
                     LEFT_FOURIER_PATH = os.path.join(DATA_PATH, str(window_size), "left_" + angle + ".json")
@@ -178,33 +179,33 @@ def run_search(path, window_sizes, angles, size=0):
                         labels = df["label"]
 
                         model_data = model_selection.train_test_split(data, labels, test_size=0.25)
-                        pool.apply_async(async_model_testing, args=(model_data, model, synced_results, angle, window_size,))
+                        pool.apply_async(async_model_testing, args=(model_data, model, synced_results, angle,))
 
-            pool.close()
-            pool.join()
+                pool.close()
+                pool.join()
 
-            for result in synced_results:
-                results = results.append({
-                    "model": result["model"],
-                    "model_parameter": result["parameters"],
-                    "noise_reduction": params["noise_reduction"],
-                    "minimal_movement": params["minimal_movement"],
-                    "bandwidth": params["bandwidth"],
-                    "pooling": params["pooling"],
-                    "sma": params["sma"],
-                    "window_overlap": params["window_overlap"],
-                    "pca": params["pca"],
-                    "window_size": result["window_size"],
-                    "angle": result["angle"],
-                    "sensitivity": result["sensitivity"],
-                    "specificity": result["specificity"]
-                }, ignore_index=True)
+                for result in synced_results:
+                    results = results.append({
+                        "model": result["model"],
+                        "model_parameter": result["parameters"],
+                        "noise_reduction": params["noise_reduction"],
+                        "minimal_movement": params["minimal_movement"],
+                        "bandwidth": params["bandwidth"],
+                        "pooling": params["pooling"],
+                        "sma": params["sma"],
+                        "window_overlap": params["window_overlap"],
+                        "pca": params["pca"],
+                        "window_size": str(window_size),
+                        "angle": result["angle"],
+                        "sensitivity": result["sensitivity"],
+                        "specificity": result["specificity"]
+                    }, ignore_index=True)
         pbar.update()
         print("\nCheckpoint created.")
         results.to_csv("model_search_results.csv")
     pbar.close()
 
-def async_model_testing(model_data, model, synced_result, angle, window_size):
+def async_model_testing(model_data, model, synced_result, angle):
     try:
         print(f"Started fitting {model['model']}")
         sensitivity, specificity = model_testing(model_data, model)
@@ -215,7 +216,6 @@ def async_model_testing(model_data, model, synced_result, angle, window_size):
         "model": model["model"],
         "parameters": model["parameters"],
         "angle": angle,
-        "window_size": str(window_size),
         "sensitivity": sensitivity,
         "specificity": specificity
     })
