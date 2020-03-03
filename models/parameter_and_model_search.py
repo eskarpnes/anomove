@@ -26,8 +26,8 @@ def get_search_parameter():
         "minimal_movement": [0.02, 0.04, 0.1],
         "pooling": ["mean", "max"],
         "sma": [3, 5],
-        "bandwidth": [None, 3, 5],
-        "pca": [None, 2, 5, 10],
+        "bandwidth": [None, 5],
+        "pca": [None, 5, 10],
         "window_overlap": [1, 4, 8]
     }
     return parameters
@@ -129,6 +129,8 @@ def run_search(path, window_sizes, angles, size=0):
     pbar = tqdm(total=len(grid))
 
     for i, params in enumerate(grid):
+        if params["pca"] == None and params["bandwidth"] == None:
+            continue
         print(f"Running with params: \n{params}")
         etl = ETL(
             data_path=DATA_PATH,
