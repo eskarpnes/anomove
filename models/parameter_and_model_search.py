@@ -168,6 +168,7 @@ def run_search(path, window_sizes, angles, size=0):
                 df_features = pd.DataFrame(df.data.tolist())
 
                 for model in models:
+                    print(f"\n Testing model {model}")
                     try:
                         if params["pca"] is not None:
                             pca = PCA(n_components=params["pca"])

@@ -89,7 +89,7 @@ class ETL:
 
     def load(self, dataset):
 
-        cima_id = f"{self.size}_{self.sma_window}_{self.MINIMAL_MOVEMENT}"
+        cima_id = f"{self.size}_{self.sma_window}"
         save_path = os.path.join("cache", cima_id)
 
         if os.path.exists(save_path):
@@ -172,7 +172,7 @@ class ETL:
 
     def preprocess_pooled(self, batch_size=cpu_count()):
 
-        cima_id = f"{self.size}_{self.sma_window}_{self.MINIMAL_MOVEMENT}"
+        cima_id = f"{self.size}_{self.sma_window}"
         save_path = os.path.join("cache", cima_id)
 
         if os.path.exists(save_path):
