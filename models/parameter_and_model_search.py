@@ -4,7 +4,7 @@ import time
 import os
 import pandas as pd
 from tqdm import tqdm
-import multiprocessing as multi
+from multiprocessing import freeze_support, Pool, Manager
 from pyod.models.knn import KNN
 from pyod.models.lof import LOF
 from pyod.models.abod import ABOD
@@ -155,18 +155,19 @@ def run_search(path, window_sizes, angles, size=0):
 
         for window_size in window_sizes:
             for angle in angles:
+                with Manager() as manager:
+                    print("Starting a pool of model fitting.")
+                    synced_results = manager.list()
+                    pool = Pool()
 
-                RIGHT_FOURIER_PATH = os.path.join(DATA_PATH, str(window_size), "right_" + angle + ".json")
-                LEFT_FOURIER_PATH = os.path.join(DATA_PATH, str(window_size), "left_" + angle + ".json")
+                    RIGHT_FOURIER_PATH = os.path.join(DATA_PATH, str(window_size), "right_" + angle + ".json")
+                    LEFT_FOURIER_PATH = os.path.join(DATA_PATH, str(window_size), "left_" + angle + ".json")
 
-                right_df = pd.read_json(RIGHT_FOURIER_PATH)
-                left_df = pd.read_json(LEFT_FOURIER_PATH)
-                df = right_df.append(left_df)
-                df_features = pd.DataFrame(df.data.tolist())
-
-                for model in models:
-                    print(f"\n Testing model {model['model']} at time {time.strftime('%H:%M:%S',  time.gmtime())}")
-                    try:
+                    right_df = pd.read_json(RIGHT_FOURIER_PATH)
+                    left_df = pd.read_json(LEFT_FOURIER_PATH)
+                    df = right_df.append(left_df)
+                    df_features = pd.DataFrame(df.data.tolist())
+                    for model in models:
                         if params["pca"] is not None:
                             pca = PCA(n_components=params["pca"])
                             df_features = StandardScaler().fit_transform(df_features)
@@ -178,37 +179,52 @@ def run_search(path, window_sizes, angles, size=0):
                         labels = df["label"]
 
                         model_data = model_selection.train_test_split(data, labels, test_size=0.25)
-                        sensitivity, specificity = model_testing(model_data, model)
+                        pool.apply_async(async_model_testing, args=(model_data, model, synced_results,))
 
-                    except ValueError:
-                        sensitivity, specificity = ("crashed", "crashed")
+                    pool.close()
+                    pool.join()
 
-                    results = results.append({
-                        "model": model["model"],
-                        "model_parameter": model["parameters"],
-                        "noise_reduction": params["noise_reduction"],
-                        "minimal_movement": params["minimal_movement"],
-                        "bandwidth": params["bandwidth"],
-                        "pooling": params["pooling"],
-                        "sma": params["sma"],
-                        "window_overlap": params["window_overlap"],
-                        "pca": params["pca"],
-                        "window_size": str(window_size),
-                        "angle": angle,
-                        "sensitivity": sensitivity,
-                        "specificity": specificity
-                    }, ignore_index=True)
+                    for result in synced_results:
+                        results = results.append({
+                            "model": result["model"],
+                            "model_parameter": result["parameters"],
+                            "noise_reduction": params["noise_reduction"],
+                            "minimal_movement": params["minimal_movement"],
+                            "bandwidth": params["bandwidth"],
+                            "pooling": params["pooling"],
+                            "sma": params["sma"],
+                            "window_overlap": params["window_overlap"],
+                            "pca": params["pca"],
+                            "window_size": str(window_size),
+                            "angle": angle,
+                            "sensitivity": result["sensitivity"],
+                            "specificity": result["specificity"]
+                        }, ignore_index=True)
         pbar.update()
         print("\nCheckpoint created.")
         results.to_csv("model_search_results.csv")
     pbar.close()
+
+def async_model_testing(model_data, model, synced_result):
+    try:
+        print(f"Started fitting {model['model']}")
+        sensitivity, specificity = model_testing(model_data, model)
+    except:
+        print(f"{model['model']} crashed.")
+        sensitivity, specificity = ("crashed", "crashed")
+    synced_result.append({
+        "model": model["model"],
+        "parameters": model["parameters"],
+        "sensitivity": sensitivity,
+        "specificity": specificity
+    })
 
 if __name__ == '__main__':
     DATA_PATH = "/home/erlend/datasets"
     window_sizes = [128, 256, 512, 1024]
     angles = ["shoulder", "elbow", "hip", "knee"]
 
-    # multi.freeze_support()
+    # freeze_support()
     run_search(DATA_PATH, window_sizes, angles)
     analyse.print_results("model_search_results.csv")
 
