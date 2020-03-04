@@ -354,24 +354,24 @@ class ETL:
 
     def generate_fourier_dataset(self, window_overlap=1):
         num_processes = len(self.window_sizes) * len(self.angles.keys())
-        if cpu_count() > 12:
-            pool = Pool(num_processes)
+        # if cpu_count() > 12:
+        #     pool = Pool(num_processes)
         pbar = tqdm(total=num_processes)
 
         def update_progress(*a):
             pbar.update()
 
         for window_size in self.window_sizes:
-            if cpu_count() <= 12:
-                pool = Pool(6)
+            # if cpu_count() <= 12:
+            pool = Pool()
             for angle in self.angles.keys():
                 pool.apply_async(self.generate_fourier_data, args=(window_size, angle, window_size//window_overlap,), callback=update_progress)
-            if cpu_count() <= 12:
-                pool.close()
-                pool.join()
-        if cpu_count() > 12:
+            # if cpu_count() <= 12:
             pool.close()
             pool.join()
+        # if cpu_count() > 12:
+        #     pool.close()
+        #     pool.join()
         pbar.close()
 
     def generate_fourier_all_angles(self, window_size):
