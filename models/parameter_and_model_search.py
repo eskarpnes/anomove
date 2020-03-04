@@ -131,6 +131,10 @@ def run_search(path, window_sizes, angles, size=0):
     for i, params in enumerate(grid):
         if params["pca"] == None and params["bandwidth"] == None:
             continue
+
+        if params["bandwidth"] == None and params["pooling"] == "max":
+            continue
+
         print(f"Running with params: \n{params}")
         etl = ETL(
             data_path=DATA_PATH,
