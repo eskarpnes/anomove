@@ -2,12 +2,11 @@ import pandas as pd
 import os
 
 def get_data(filename):
-    return pd.read_csv(filename)
+    return pd.read_csv(filename, index_col=0)
 
 
 def print_results(filename):
     df = get_data(filename)
-    df = df.drop(columns=["Unnamed: 0"])
     # Sort by sensitivity and print
     with pd.option_context('display.max_rows', None, "display.expand_frame_repr", False):
         print('\n Printing the results from file: ' + str(filename) + "\n")
