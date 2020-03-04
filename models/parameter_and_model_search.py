@@ -26,9 +26,9 @@ def get_search_parameter():
         "minimal_movement": [0.02, 0.04, 0.1],
         "pooling": ["mean", "max"],
         "sma": [3, 5],
-        "bandwidth": [None, 5],
-        "pca": [None, 5, 10],
-        "window_overlap": [1, 4, 8]
+        "bandwidth": [0, 5],
+        "pca": [0, 5, 10],
+        "window_overlap": [1, 2, 4, 8]
     }
     return parameters
 
@@ -121,21 +121,41 @@ def run_search(path, window_sizes, angles, size=0):
     grid = model_selection.ParameterGrid(get_search_parameter())
     models = get_models()
 
-    results = pd.DataFrame(
-        columns=["model", "model_parameter", "noise_reduction", "minimal_movement", "bandwidth", "pooling", "sma", "window_overlap", "pca", "window_size", "angle",
-                 "sensitivity", "specificity"]
-    )
+    if os.path.exists("model_search_results.csv"):
+        results = pd.read_csv("model_search_results.csv", index_col=0)
+    else:
+        results = pd.DataFrame(
+            columns=["model", "model_parameter", "noise_reduction", "minimal_movement", "bandwidth", "pooling", "sma", "window_overlap", "pca", "window_size", "angle",
+                     "sensitivity", "specificity"]
+        )
 
     pbar = tqdm(total=len(grid))
 
     for i, params in enumerate(grid):
-        if params["pca"] == None and params["bandwidth"] == None:
-            continue
-
-        if params["bandwidth"] == None and params["pooling"] == "max":
-            continue
 
         print(f"Running with params: \n{params}")
+
+        params_series = pd.Series(params)
+        params_keys = list(params.keys())
+        in_results = (results[params_keys] == params_series).all(axis=1).sum()
+        if in_results:
+            # Parameters has already been ran.
+            print("Already done this combination, skipping...\n")
+            pbar.update()
+            continue
+
+        if params["pca"] == 0 and params["bandwidth"] == 0:
+            # No dimension reduction, too many dimensions.
+            print("No dimension reduction, skipping...\n")
+            pbar.update()
+            continue
+
+        if params["bandwidth"] == 0 and params["pooling"] == "max":
+            # Pooling is dependent on bandwidth, so no bandwidth = no pooling. Remove one choice in pooling to reduce it to 1.
+            print("Invalid combination, skipping...\n")
+            pbar.update()
+            continue
+
         etl = ETL(
             data_path=DATA_PATH,
             window_sizes=window_sizes,
@@ -167,7 +187,7 @@ def run_search(path, window_sizes, angles, size=0):
                     df = right_df.append(left_df)
                     df_features = pd.DataFrame(df.data.tolist())
                     for model in models:
-                        if params["pca"] is not None:
+                        if params["pca"] != 0:
                             pca = PCA(n_components=params["pca"])
                             df_features = StandardScaler().fit_transform(df_features)
                             principal_components = pca.fit_transform(df_features)
@@ -226,5 +246,5 @@ if __name__ == '__main__':
 
     # freeze_support()
     run_search(DATA_PATH, window_sizes, angles)
-    analyse.print_results("model_search_results.csv")
+    # analyse.print_results("model_search_results.csv")
 
