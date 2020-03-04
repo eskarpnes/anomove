@@ -87,7 +87,7 @@ class ETL:
             "left_knee": ["left_hip", "left_knee", "left_ankle"]
         }
 
-    def load(self, dataset):
+    def load(self, dataset, validation=False):
 
         cima_id = f"{self.size}_{self.sma_window}"
         save_path = os.path.join("cache", cima_id)
@@ -103,7 +103,11 @@ class ETL:
 
         self.load_metadata(dataset)
 
-        cima_path = os.path.join(cima_path, "data") if os.path.exists(os.path.join(cima_path, "data")) else cima_path
+
+        data_path = "data"
+        if validation:
+            data_path = "validation"
+        cima_path = os.path.join(cima_path, data_path) if os.path.exists(os.path.join(cima_path, data_path)) else cima_path
 
         for root, dirs, files in os.walk(cima_path):
             for filename in files:
@@ -116,8 +120,10 @@ class ETL:
             healthy = self.metadata.loc[self.metadata["CP"] == 0]
             impaired = self.metadata.loc[self.metadata["CP"] == 1]
 
-            healthy_ids = list(healthy.sample(self.size-self.size//10, random_state=self.random_seed)["ID"])
-            impaired_ids = list(impaired.sample(self.size//10, random_state=self.random_seed)["ID"])
+            impaired_percentage = len(impaired) / (len(healthy) + len(impaired))
+
+            healthy_ids = list(healthy.sample(int(np.around(self.size * (1 - impaired_percentage))), random_state=self.random_seed)["ID"])
+            impaired_ids = list(impaired.sample(int(np.around(self.size * impaired_percentage)), random_state=self.random_seed)["ID"])
 
             all_ids = []
             all_ids.extend(healthy_ids)
@@ -397,7 +403,7 @@ class ETL:
                 dataset = dataset.append(
                     {"id": key, "label": item["label"], "data": list(fourier_data[1:window_size // 2])},
                     ignore_index=True)
-        if self.bandwidth is not None:
+        if self.bandwidth != 0:
             dataset = self.generate_frequency_bands(dataset)
         self.save_fourier_dataset(window_size, angle, dataset)
 
@@ -424,7 +430,7 @@ class ETL:
 
 
 if __name__ == "__main__":
-    etl = ETL("/home/login/datasets", [128, 256, 512, 1024], size=16)
-    etl.load("CIMA")
+    etl = ETL("/home/login/datasets", [128, 256, 512, 1024], size=75)
+    etl.load("CIMA", validation=True)
     etl.preprocess_pooled()
     etl.generate_fourier_dataset(window_overlap=4)
