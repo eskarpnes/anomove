@@ -17,73 +17,25 @@ from etl.etl import ETL
 from sklearn import model_selection, neighbors, metrics
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-from models import analyse_results as analyse
+from sklearn.model_selection import KFold
+from models import create_models
 
 
 def get_search_parameter():
     parameters = {
         "noise_reduction": ["movement"],
-        "minimal_movement": [0.02, 0.04, 0.1],
-        "pooling": ["mean", "max"],
-        "sma": [3, 5],
-        "bandwidth": [0, 5],
-        "pca": [0, 5, 10],
-        "window_overlap": [1, 2, 4, 8]
+        "minimal_movement": [ 0.1],
+        "pooling": ["mean"],
+        "sma": [3],
+        "bandwidth": [5],
+        "pca": [10],
+        "window_overlap": [1]
     }
     return parameters
 
+
 def get_models():
-    models = [
-        {
-            "model": ABOD,
-            "supervised": False,
-            "parameters": {}
-        },
-        {
-            "model": KNN,
-            "supervised": False,
-            "parameters": {
-                "n_neighbors": 2
-            }
-        },
-        {
-            "model": KNN,
-            "supervised": False,
-            "parameters": {
-                "n_neighbors": 5
-            }
-        },
-        {
-            "model": LOF,
-            "supervised": False,
-            "parameters": {
-                "n_neighbors": 2
-            }
-        },
-        {
-            "model": LOF,
-            "supervised": False,
-            "parameters": {
-                "n_neighbors": 5
-            }
-        },
-        {
-            "model": OCSVM,
-            "supervised": False,
-            "parameters": {}
-        },
-        {
-            "model": HBOS,
-            "supervised": False,
-            "parameters": {}
-        },
-        {
-            "model": CBLOF,
-            "supervised": False,
-            "parameters": {}
-        },
-        ]
-    return models
+    return create_models.create_models()
 
 def model_testing(data, model):
     X_train, X_test, y_train, y_test = data
@@ -120,7 +72,7 @@ def run_search(path, window_sizes, angles, size=0):
     DATA_PATH = path
     grid = model_selection.ParameterGrid(get_search_parameter())
     models = get_models()
-
+    print("lø")
     if os.path.exists("model_search_results.csv"):
         results = pd.read_csv("model_search_results.csv", index_col=0)
     else:
@@ -131,6 +83,7 @@ def run_search(path, window_sizes, angles, size=0):
 
     pbar = tqdm(total=len(grid))
 
+    kf = KFold(n_splits=10)
     for i, params in enumerate(grid):
 
         print(f"Running with params: \n{params}")
@@ -197,8 +150,13 @@ def run_search(path, window_sizes, angles, size=0):
                             data = df_features
                         labels = df["label"]
 
-                        model_data = model_selection.train_test_split(data, labels, test_size=0.25)
-                        pool.apply_async(async_model_testing, args=(model_data, model, synced_results, angle,))
+                        for train_index, test_index in kf.split(data):
+                            model_data = data[train_index], data[test_index], labels[train_index], labels[test_index]
+                            pool.apply_async(async_model_testing, args=(model_data, model, synced_results, angle,))
+
+
+                        #model_data = model_selection.train_test_split(data, labels, test_size=0.25)
+
 
                 pool.close()
                 pool.join()
@@ -239,6 +197,23 @@ def async_model_testing(model_data, model, synced_result, angle):
         "specificity": specificity
     })
 
+
+def kf_results():
+    results = pd.read_csv("model_search_results_testing.csv", index_col=0)
+    for i, row in results.iterrows():
+        counter = 0
+        for j, row2 in results.iterrows():
+            if row.iloc[0:11].equals(row2.iloc[0:11]):
+                counter += 1
+                if counter > 1:
+                    print("True")
+        # gå gjennom dataframen og finn alle like modeller
+        # regn så ut variansen og avg_senv og avg_spec
+        # slett så radene utenom den nye raden med avg_sens og avg_spec
+        # print(index)
+
+
+
 if __name__ == '__main__':
     DATA_PATH = "/home/erlend/datasets"
     window_sizes = [128, 256, 512, 1024]
@@ -247,4 +222,3 @@ if __name__ == '__main__':
     # freeze_support()
     run_search(DATA_PATH, window_sizes, angles)
     # analyse.print_results("model_search_results.csv")
-
