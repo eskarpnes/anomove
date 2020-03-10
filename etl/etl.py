@@ -89,7 +89,9 @@ class ETL:
 
     def load(self, dataset, validation=False):
 
-        cima_id = f"{self.size}_{self.sma_window}"
+        self.validation = validation
+
+        cima_id = f"{'validation' if validation else 'data'}{'_' + self.size if self.size != 0 else ''}_{self.sma_window}"
         save_path = os.path.join("cache", cima_id)
 
         if os.path.exists(save_path):
@@ -106,6 +108,7 @@ class ETL:
 
         data_path = "data"
         if validation:
+            self.validation = True
             data_path = "validation"
         cima_path = os.path.join(cima_path, data_path) if os.path.exists(os.path.join(cima_path, data_path)) else cima_path
 
@@ -178,7 +181,7 @@ class ETL:
 
     def preprocess_pooled(self, batch_size=cpu_count()):
 
-        cima_id = f"{self.size}_{self.sma_window}"
+        cima_id = f"{'validation' if self.validation else 'data'}{'_' + self.size if self.size != 0 else ''}_{self.sma_window}"
         save_path = os.path.join("cache", cima_id)
 
         if os.path.exists(save_path):
