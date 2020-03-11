@@ -205,21 +205,23 @@ def async_model_testing(model_data, model, synced_result, angle):
     })
 
 
-def kf_results():
+def average_results():
     results = pd.read_csv("model_search_results_testing.csv", index_col=0)
-    for i, row in results.iterrows():
-        counter = 0
-        for j, row2 in results.iterrows():
-            if row.iloc[0:11].equals(row2.iloc[0:11]):
-                counter += 1
-                if counter > 1:
-                    print("True")
-        # gå gjennom dataframen og finn alle like modeller
-        # regn så ut variansen og avg_senv og avg_spec
-        # slett så radene utenom den nye raden med avg_sens og avg_spec
-        # print(index)
 
-
+    results = results.groupby([
+        "model",
+        "model_parameter",
+        "noise_reduction",
+        "minimal_movement",
+        "bandwidth",
+        "pooling",
+        "sma",
+        "window_overlap",
+        "pca",
+        "window_size",
+        "angle"
+    ]).mean().reset_index()
+    results.to_csv("model_search_results_testing_fixed.csv")
 
 if __name__ == '__main__':
     DATA_PATH = "/home/erlend/datasets"
@@ -227,5 +229,5 @@ if __name__ == '__main__':
     angles = ["shoulder", "elbow", "hip", "knee"]
 
     # freeze_support()
-    run_search(DATA_PATH, window_sizes, angles)
-    # analyse.print_results("model_search_results.csv")
+    # run_search(DATA_PATH, window_sizes, angles)
+    average_results()
