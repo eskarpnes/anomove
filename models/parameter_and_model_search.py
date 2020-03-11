@@ -1,5 +1,7 @@
 import sys
 sys.path.append('../')
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 import time
 import os
 import pandas as pd
@@ -24,7 +26,7 @@ from models import create_models
 def get_search_parameter():
     parameters = {
         "noise_reduction": ["movement"],
-        "minimal_movement": [ 0.1],
+        "minimal_movement": [0.1],
         "pooling": ["mean"],
         "sma": [3],
         "bandwidth": [5],
@@ -36,6 +38,7 @@ def get_search_parameter():
 
 def get_models():
     return create_models.create_models()
+
 
 def model_testing(data, model):
     X_train, X_test, y_train, y_test = data
@@ -72,7 +75,6 @@ def run_search(path, window_sizes, angles, size=0):
     DATA_PATH = path
     grid = model_selection.ParameterGrid(get_search_parameter())
     models = get_models()
-    print("lø")
     if os.path.exists("model_search_results.csv"):
         results = pd.read_csv("model_search_results.csv", index_col=0)
     else:
@@ -138,6 +140,7 @@ def run_search(path, window_sizes, angles, size=0):
                     right_df = pd.read_json(RIGHT_FOURIER_PATH)
                     left_df = pd.read_json(LEFT_FOURIER_PATH)
                     df = right_df.append(left_df)
+                    df.reset_index(drop=True, inplace=True)
                     df_features = pd.DataFrame(df.data.tolist())
                     for model in models:
                         if params["pca"] != 0:
@@ -151,12 +154,13 @@ def run_search(path, window_sizes, angles, size=0):
                         labels = df["label"]
 
                         for train_index, test_index in kf.split(data):
-                            model_data = data[train_index], data[test_index], labels[train_index], labels[test_index]
+                            x_train = data.iloc[train_index]
+                            x_test = data.iloc[test_index]
+                            y_train = labels[train_index]
+                            y_test = labels[test_index]
+
+                            model_data = x_train, x_test, y_train, y_test
                             pool.apply_async(async_model_testing, args=(model_data, model, synced_results, angle,))
-
-
-                        #model_data = model_selection.train_test_split(data, labels, test_size=0.25)
-
 
                 pool.close()
                 pool.join()
@@ -182,12 +186,15 @@ def run_search(path, window_sizes, angles, size=0):
         results.to_csv("model_search_results.csv")
     pbar.close()
 
+
 def async_model_testing(model_data, model, synced_result, angle):
     try:
         # print(f"Started fitting {model['model']}")
         sensitivity, specificity = model_testing(model_data, model)
     except:
+        print("Unexpected error:", sys.exc_info()[0])
         print(f"{model['model']} crashed.")
+
         sensitivity, specificity = ("crashed", "crashed")
     synced_result.append({
         "model": model["model"],
