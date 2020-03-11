@@ -94,6 +94,9 @@ def run_search(path, window_sizes, angles, size=0):
 
     pbar = tqdm(total=len(models)*len(window_sizes)*len(angles))
 
+    def update_progress(*a):
+        pbar.update()
+
     kf = KFold(n_splits=10)
     for i, params in enumerate(grid):
 
@@ -170,7 +173,7 @@ def run_search(path, window_sizes, angles, size=0):
                                 y_test = labels[test_index]
 
                                 model_data = x_train, x_test, y_train, y_test
-                                pool.apply_async(async_model_testing, args=(model_data, model, synced_results, angle,), callback=pbar.update)
+                                pool.apply_async(async_model_testing, args=(model_data, model, synced_results, angle,), callback=update_progress)
 
                         pool.close()
                         pool.join()
@@ -239,5 +242,5 @@ if __name__ == '__main__':
     angles = ["shoulder", "elbow", "hip", "knee"]
 
     # freeze_support()
-    # run_search(DATA_PATH, window_sizes, angles)
-    average_results()
+    run_search(DATA_PATH, window_sizes, angles)
+    # average_results()
