@@ -1,12 +1,14 @@
 import sys
+
 sys.path.append('../')
 import warnings
+
 warnings.simplefilter(action='ignore', category=FutureWarning)
 import time
 import os
 import pandas as pd
 from tqdm import tqdm
-from multiprocessing import freeze_support, Pool, Manager
+from multiprocessing import freeze_support, Pool, Manager, cpu_count
 from pyod.models.knn import KNN
 from pyod.models.lof import LOF
 from pyod.models.abod import ABOD
@@ -71,19 +73,26 @@ def model_testing(data, model):
     return sensitivity, specificity
 
 
+def chunkify(large_list, chunk_size):
+    for i in range(0, len(large_list), chunk_size):
+        yield large_list[i:i + chunk_size]
+
+
 def run_search(path, window_sizes, angles, size=0):
     DATA_PATH = path
     grid = model_selection.ParameterGrid(get_search_parameter())
     models = get_models()
+    batches = chunkify(models, cpu_count())
     if os.path.exists("model_search_results.csv"):
         results = pd.read_csv("model_search_results.csv", index_col=0)
     else:
         results = pd.DataFrame(
-            columns=["model", "model_parameter", "noise_reduction", "minimal_movement", "bandwidth", "pooling", "sma", "window_overlap", "pca", "window_size", "angle",
+            columns=["model", "model_parameter", "noise_reduction", "minimal_movement", "bandwidth", "pooling", "sma",
+                     "window_overlap", "pca", "window_size", "angle",
                      "sensitivity", "specificity"]
         )
 
-    pbar = tqdm(total=len(grid))
+    pbar = tqdm(total=len(models)*len(window_sizes)*len(angles))
 
     kf = KFold(n_splits=10)
     for i, params in enumerate(grid):
@@ -128,60 +137,60 @@ def run_search(path, window_sizes, angles, size=0):
         etl.generate_fourier_dataset(window_overlap=params["window_overlap"])
 
         for window_size in window_sizes:
-            with Manager() as manager:
-                print("Starting a pool of model fitting.")
-                synced_results = manager.list()
-                pool = Pool()
+            for angle in angles:
 
-                for angle in angles:
-                    RIGHT_FOURIER_PATH = os.path.join(DATA_PATH, str(window_size), "right_" + angle + ".json")
-                    LEFT_FOURIER_PATH = os.path.join(DATA_PATH, str(window_size), "left_" + angle + ".json")
+                RIGHT_FOURIER_PATH = os.path.join(DATA_PATH, str(window_size), "right_" + angle + ".json")
+                LEFT_FOURIER_PATH = os.path.join(DATA_PATH, str(window_size), "left_" + angle + ".json")
 
-                    right_df = pd.read_json(RIGHT_FOURIER_PATH)
-                    left_df = pd.read_json(LEFT_FOURIER_PATH)
-                    df = right_df.append(left_df)
-                    df.reset_index(drop=True, inplace=True)
-                    df_features = pd.DataFrame(df.data.tolist())
-                    for model in models:
-                        if params["pca"] != 0:
-                            pca = PCA(n_components=params["pca"])
-                            df_features = StandardScaler().fit_transform(df_features)
-                            principal_components = pca.fit_transform(df_features)
-                            principal_df = pd.DataFrame(data=principal_components)
-                            data = principal_df
-                        else:
-                            data = df_features
-                        labels = df["label"]
+                right_df = pd.read_json(RIGHT_FOURIER_PATH)
+                left_df = pd.read_json(LEFT_FOURIER_PATH)
+                df = right_df.append(left_df)
+                df.reset_index(drop=True, inplace=True)
+                df_features = pd.DataFrame(df.data.tolist())
 
-                        for train_index, test_index in kf.split(data):
-                            x_train = data.iloc[train_index]
-                            x_test = data.iloc[test_index]
-                            y_train = labels[train_index]
-                            y_test = labels[test_index]
+                with Manager() as manager:
+                    for batch in batches:
+                        synced_results = manager.list()
+                        pool = Pool()
+                        for model in batch:
+                            if params["pca"] != 0:
+                                pca = PCA(n_components=params["pca"])
+                                df_features = StandardScaler().fit_transform(df_features)
+                                principal_components = pca.fit_transform(df_features)
+                                principal_df = pd.DataFrame(data=principal_components)
+                                data = principal_df
+                            else:
+                                data = df_features
+                            labels = df["label"]
 
-                            model_data = x_train, x_test, y_train, y_test
-                            pool.apply_async(async_model_testing, args=(model_data, model, synced_results, angle,))
+                            for train_index, test_index in kf.split(data):
+                                x_train = data.iloc[train_index]
+                                x_test = data.iloc[test_index]
+                                y_train = labels[train_index]
+                                y_test = labels[test_index]
 
-                pool.close()
-                pool.join()
+                                model_data = x_train, x_test, y_train, y_test
+                                pool.apply_async(async_model_testing, args=(model_data, model, synced_results, angle,), callback=pbar.update)
 
-                for result in synced_results:
-                    results = results.append({
-                        "model": result["model"],
-                        "model_parameter": result["parameters"],
-                        "noise_reduction": params["noise_reduction"],
-                        "minimal_movement": params["minimal_movement"],
-                        "bandwidth": params["bandwidth"],
-                        "pooling": params["pooling"],
-                        "sma": params["sma"],
-                        "window_overlap": params["window_overlap"],
-                        "pca": params["pca"],
-                        "window_size": str(window_size),
-                        "angle": result["angle"],
-                        "sensitivity": result["sensitivity"],
-                        "specificity": result["specificity"]
-                    }, ignore_index=True)
-        pbar.update()
+                        pool.close()
+                        pool.join()
+
+                        for result in synced_results:
+                            results = results.append({
+                                "model": result["model"],
+                                "model_parameter": result["parameters"],
+                                "noise_reduction": params["noise_reduction"],
+                                "minimal_movement": params["minimal_movement"],
+                                "bandwidth": params["bandwidth"],
+                                "pooling": params["pooling"],
+                                "sma": params["sma"],
+                                "window_overlap": params["window_overlap"],
+                                "pca": params["pca"],
+                                "window_size": str(window_size),
+                                "angle": result["angle"],
+                                "sensitivity": result["sensitivity"],
+                                "specificity": result["specificity"]
+                            }, ignore_index=True)
         print("\nCheckpoint created.")
         results.to_csv("model_search_results.csv")
     pbar.close()
@@ -222,6 +231,7 @@ def average_results():
         "angle"
     ]).mean().reset_index()
     results.to_csv("model_search_results_testing_fixed.csv")
+
 
 if __name__ == '__main__':
     DATA_PATH = "/home/erlend/datasets"
