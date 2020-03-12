@@ -82,7 +82,6 @@ def run_search(path, window_sizes, angles, size=0):
     DATA_PATH = path
     grid = model_selection.ParameterGrid(get_search_parameter())
     models = get_models()
-    batches = chunkify(models, cpu_count())
     if os.path.exists("model_search_results.csv"):
         results = pd.read_csv("model_search_results.csv", index_col=0)
     else:
@@ -92,7 +91,7 @@ def run_search(path, window_sizes, angles, size=0):
                      "sensitivity", "specificity"]
         )
 
-    pbar = tqdm(total=len(models)*len(window_sizes)*len(angles))
+    pbar = tqdm(total=len(models) * len(window_sizes) * len(angles))
 
     def update_progress(*a):
         pbar.update()
@@ -139,21 +138,21 @@ def run_search(path, window_sizes, angles, size=0):
         print("\nGenerating fourier data.")
         etl.generate_fourier_dataset(window_overlap=params["window_overlap"])
 
-        for window_size in window_sizes:
-            for angle in angles:
+        with Manager() as manager:
+            synced_results = manager.list()
+            for window_size in window_sizes:
+                for angle in angles:
 
-                RIGHT_FOURIER_PATH = os.path.join(DATA_PATH, str(window_size), "right_" + angle + ".json")
-                LEFT_FOURIER_PATH = os.path.join(DATA_PATH, str(window_size), "left_" + angle + ".json")
+                    right_fourier_path = os.path.join(DATA_PATH, str(window_size), "right_" + angle + ".json")
+                    left_fourier_path = os.path.join(DATA_PATH, str(window_size), "left_" + angle + ".json")
 
-                right_df = pd.read_json(RIGHT_FOURIER_PATH)
-                left_df = pd.read_json(LEFT_FOURIER_PATH)
-                df = right_df.append(left_df)
-                df.reset_index(drop=True, inplace=True)
-                df_features = pd.DataFrame(df.data.tolist())
+                    right_df = pd.read_json(right_fourier_path)
+                    left_df = pd.read_json(left_fourier_path)
+                    df = right_df.append(left_df)
+                    df.reset_index(drop=True, inplace=True)
+                    df_features = pd.DataFrame(df.data.tolist())
 
-                with Manager() as manager:
-                    for batch in batches:
-                        synced_results = manager.list()
+                    for batch in chunkify(models, 10):
                         pool = Pool()
                         for model in batch:
                             if params["pca"] != 0:
@@ -173,29 +172,16 @@ def run_search(path, window_sizes, angles, size=0):
                                 y_test = labels[test_index]
 
                                 model_data = x_train, x_test, y_train, y_test
-                                pool.apply_async(async_model_testing, args=(model_data, model, synced_results, angle,), callback=update_progress)
+                                pool.apply_async(async_model_testing, args=(model_data, model, synced_results, angle,),
+                                                 callback=update_progress)
 
                         pool.close()
                         pool.join()
 
-                        for result in synced_results:
-                            results = results.append({
-                                "model": result["model"],
-                                "model_parameter": result["parameters"],
-                                "noise_reduction": params["noise_reduction"],
-                                "minimal_movement": params["minimal_movement"],
-                                "bandwidth": params["bandwidth"],
-                                "pooling": params["pooling"],
-                                "sma": params["sma"],
-                                "window_overlap": params["window_overlap"],
-                                "pca": params["pca"],
-                                "window_size": str(window_size),
-                                "angle": result["angle"],
-                                "sensitivity": result["sensitivity"],
-                                "specificity": result["specificity"]
-                            }, ignore_index=True)
-        print("\nCheckpoint created.")
-        results.to_csv("model_search_results.csv")
+            print("\nCheckpoint created.")
+            results = pd.DataFrame(list(synced_results))
+            results.to_csv("model_search_results.csv")
+
     pbar.close()
 
 
@@ -242,5 +228,5 @@ if __name__ == '__main__':
     angles = ["shoulder", "elbow", "hip", "knee"]
 
     # freeze_support()
-    run_search(DATA_PATH, window_sizes, angles)
+    run_search(DATA_PATH, window_sizes, angles, size=16)
     # average_results()
