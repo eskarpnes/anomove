@@ -19,70 +19,30 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from models import analyse_results as analyse
 
+from predictor import Predictor
 
 def get_search_parameter():
     parameters = {
         "noise_reduction": ["movement"],
-        "minimal_movement": [0.02, 0.04, 0.1],
-        "pooling": ["mean", "max"],
-        "sma": [3, 5],
-        "bandwidth": [0, 5],
-        "pca": [0, 5, 10],
-        "window_overlap": [1, 2, 4, 8]
+        "minimal_movement": [0.02],
+        "pooling": ["mean"],
+        "sma": [5],
+        "bandwidth": [5],
+        "pca": [10],
+        "window_overlap": [2]
     }
     return parameters
 
 def get_models():
     models = [
         {
-            "model": ABOD,
-            "supervised": False,
-            "parameters": {}
-        },
-        {
-            "model": KNN,
-            "supervised": False,
-            "parameters": {
-                "n_neighbors": 2
-            }
-        },
-        {
             "model": KNN,
             "supervised": False,
             "parameters": {
                 "n_neighbors": 5
             }
-        },
-        {
-            "model": LOF,
-            "supervised": False,
-            "parameters": {
-                "n_neighbors": 2
-            }
-        },
-        {
-            "model": LOF,
-            "supervised": False,
-            "parameters": {
-                "n_neighbors": 5
-            }
-        },
-        {
-            "model": OCSVM,
-            "supervised": False,
-            "parameters": {}
-        },
-        {
-            "model": HBOS,
-            "supervised": False,
-            "parameters": {}
-        },
-        {
-            "model": CBLOF,
-            "supervised": False,
-            "parameters": {}
-        },
-        ]
+        }
+    ]
     return models
 
 def model_testing(data, model):
@@ -94,6 +54,10 @@ def model_testing(data, model):
         clf.fit(X_train, y_train)
     else:
         clf.fit(X_train)
+
+    predictor = Predictor()
+    predictor.model = clf
+    predictor.save_model("knn")
 
     y_train_pred = clf.labels_  # binary labels (0: inliers, 1: outliers)
     y_train_scores = clf.decision_scores_  # raw outlier scores
@@ -138,7 +102,7 @@ def run_search(path, window_sizes, angles, size=0):
         params_series = pd.Series(params)
         params_keys = list(params.keys())
         in_results = (results[params_keys] == params_series).all(axis=1).sum()
-        if in_results:
+        if False:
             # Parameters has already been ran.
             print("Already done this combination, skipping...\n")
             pbar.update()
@@ -174,11 +138,10 @@ def run_search(path, window_sizes, angles, size=0):
 
         for window_size in window_sizes:
             with Manager() as manager:
-                print("Starting a pool of model fitting.")
-                synced_results = manager.list()
-                pool = Pool()
-
                 for angle in angles:
+                    print("Starting a pool of model fitting.")
+                    synced_results = manager.list()
+                    pool = Pool()
                     RIGHT_FOURIER_PATH = os.path.join(DATA_PATH, str(window_size), "right_" + angle + ".json")
                     LEFT_FOURIER_PATH = os.path.join(DATA_PATH, str(window_size), "left_" + angle + ".json")
 
@@ -200,25 +163,25 @@ def run_search(path, window_sizes, angles, size=0):
                         model_data = model_selection.train_test_split(data, labels, test_size=0.25)
                         pool.apply_async(async_model_testing, args=(model_data, model, synced_results, angle,))
 
-                pool.close()
-                pool.join()
+                    pool.close()
+                    pool.join()
 
-                for result in synced_results:
-                    results = results.append({
-                        "model": result["model"],
-                        "model_parameter": result["parameters"],
-                        "noise_reduction": params["noise_reduction"],
-                        "minimal_movement": params["minimal_movement"],
-                        "bandwidth": params["bandwidth"],
-                        "pooling": params["pooling"],
-                        "sma": params["sma"],
-                        "window_overlap": params["window_overlap"],
-                        "pca": params["pca"],
-                        "window_size": str(window_size),
-                        "angle": result["angle"],
-                        "sensitivity": result["sensitivity"],
-                        "specificity": result["specificity"]
-                    }, ignore_index=True)
+                    for result in synced_results:
+                        results = results.append({
+                            "model": result["model"],
+                            "model_parameter": result["parameters"],
+                            "noise_reduction": params["noise_reduction"],
+                            "minimal_movement": params["minimal_movement"],
+                            "bandwidth": params["bandwidth"],
+                            "pooling": params["pooling"],
+                            "sma": params["sma"],
+                            "window_overlap": params["window_overlap"],
+                            "pca": params["pca"],
+                            "window_size": str(window_size),
+                            "angle": result["angle"],
+                            "sensitivity": result["sensitivity"],
+                            "specificity": result["specificity"]
+                        }, ignore_index=True)
         pbar.update()
         print("\nCheckpoint created.")
         results.to_csv("model_search_results.csv")
