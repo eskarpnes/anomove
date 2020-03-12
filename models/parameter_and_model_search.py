@@ -82,7 +82,6 @@ def run_search(path, window_sizes, angles, size=0):
     DATA_PATH = path
     grid = model_selection.ParameterGrid(get_search_parameter())
     models = get_models()
-    batches = chunkify(models, cpu_count())
     if os.path.exists("model_search_results.csv"):
         results = pd.read_csv("model_search_results.csv", index_col=0)
     else:
@@ -152,8 +151,8 @@ def run_search(path, window_sizes, angles, size=0):
                 df_features = pd.DataFrame(df.data.tolist())
 
                 with Manager() as manager:
-                    for batch in batches:
-                        synced_results = manager.list()
+                    for batch in chunkify(models, cpu_count()):
+                        synced_results = manager.list
                         pool = Pool()
                         for model in batch:
                             if params["pca"] != 0:
