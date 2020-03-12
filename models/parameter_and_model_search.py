@@ -228,5 +228,5 @@ if __name__ == '__main__':
     angles = ["shoulder", "elbow", "hip", "knee"]
 
     # freeze_support()
-    run_search(DATA_PATH, window_sizes, angles, size=16)
+    run_search(DATA_PATH, window_sizes, angles)
     # average_results()
