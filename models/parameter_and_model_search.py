@@ -82,9 +82,10 @@ def chunkify(large_list, chunk_size):
 def run_search(path, window_sizes, angles, size=0):
     DATA_PATH = path
     grid = model_selection.ParameterGrid(get_search_parameter())
-    # Returns every model if ensemble is false and every ensemble methods if true. Pca determine the number of k
-    # in KNN and LOF
-    models = get_models(ensemble=False, pca=10)
+    # Returns base models
+    models = get_models(ensemble=False, knn_methods=["mean", "largest"], pca=10)
+    # Returns ensemble models
+    # models = get_models(ensemble=True, knn_methods=["mean", "largest"], ensemble_combinations=["average", "maximization"], pca=10)
     kfold_splits = 10
     kf = KFold(n_splits=kfold_splits)
 
@@ -230,10 +231,10 @@ def average_results():
 
 
 if __name__ == '__main__':
-    DATA_PATH = "/home/erlend/datasets"
+    DATA_PATH = "C://Users//haavalo//Desktop//Master//Dataset"
     window_sizes = [128, 256, 512, 1024]
     angles = ["shoulder", "elbow", "hip", "knee"]
 
-    # freeze_support()
+    freeze_support()
     run_search(DATA_PATH, window_sizes, angles)
     # average_results()

@@ -5,22 +5,20 @@ from pyod.models.lof import LOF
 from pyod.models.ocsvm import OCSVM
 
 
-def get_models(ensemble=False, pca=10):
+def get_models(ensemble=False, knn_methods=["mean", "largest"], ensemble_combinations=["average", "maximization"], pca=10):
     if not ensemble:
-        return create_models(pca)
+        return create_models(knn_methods, pca)
     if ensemble:
-        return create_ensemble_models(pca)
+        return create_ensemble_models(knn_methods, ensemble_combinations, pca)
 
 
-def create_ensemble_models(pca):
-    ensemble_combinations = ["average", "maximization"]
-    methods = ["mean", "largest"]
+def create_ensemble_models(knn_methods, ensemble_combinations, pca):
     model_list = []
 
     for ensemble_combination in ensemble_combinations:
         for i in range(1, pca + 1):
             for j in range(1, pca + 1):
-                for method in methods:
+                for method in knn_methods:
                     element = {
                         "model": SimpleDetectorAggregator,
                         "supervised": False,
@@ -38,9 +36,8 @@ def create_ensemble_models(pca):
     return model_list
 
 
-def create_models(pca):
+def create_models(methods, pca):
     models = [KNN, LOF, ABOD, OCSVM]
-    methods = ["mean", "largest"]
     model_list = []
 
     for model in models:
