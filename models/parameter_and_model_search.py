@@ -151,24 +151,25 @@ def run_search(path, window_sizes, angles, size=0, ensemble=False, result_name="
 
                     for batch in chunkify(models, 5):
                         pool = Pool()
-                        for model in batch:
-                            if params["pca"] != 0:
-                                pca = PCA(n_components=params["pca"])
-                                df_features = StandardScaler().fit_transform(df_features)
-                                principal_components = pca.fit_transform(df_features)
-                                principal_df = pd.DataFrame(data=principal_components)
-                                data = principal_df
-                            else:
-                                data = df_features
-                            labels = df["label"]
 
-                            for train_index, test_index in kf.split(data):
-                                x_train = data.iloc[train_index]
-                                x_test = data.iloc[test_index]
-                                y_train = labels[train_index]
-                                y_test = labels[test_index]
+                        if params["pca"] != 0:
+                            pca = PCA(n_components=params["pca"])
+                            df_features = StandardScaler().fit_transform(df_features)
+                            principal_components = pca.fit_transform(df_features)
+                            principal_df = pd.DataFrame(data=principal_components)
+                            data = principal_df
+                        else:
+                            data = df_features
+                        labels = df["label"]
 
-                                model_data = x_train, x_test, y_train, y_test
+                        for train_index, test_index in kf.split(data):
+                            x_train = data.iloc[train_index]
+                            x_test = data.iloc[test_index]
+                            y_train = labels[train_index]
+                            y_test = labels[test_index]
+
+                            model_data = x_train, x_test, y_train, y_test
+                            for model in batch:
                                 pool.apply_async(async_model_testing, args=(model_data, model, synced_results, angle,),
                                                  callback=update_progress)
 
