@@ -133,6 +133,9 @@ def run_search(path, window_sizes, angles, size=0, ensemble=False, result_name="
         print("\nGenerating fourier data.")
         etl.generate_fourier_dataset(window_overlap=params["window_overlap"])
 
+        if not os.path.exists("tmp"):
+            os.mkdir("tmp")
+
         with Manager() as manager:
             for window_size in window_sizes:
                 for angle in angles:
@@ -176,8 +179,14 @@ def run_search(path, window_sizes, angles, size=0, ensemble=False, result_name="
 
                     print("\nCheckpoint created.")
                     results = pd.DataFrame(list(synced_results))
-                    results.to_csv(f"{result_name}_{str(window_size)}_{angle}.csv")
+                    result_path = os.path.join("tmp", f"{result_name}_{str(window_size)}_{angle}.csv")
+                    results.to_csv(result_path)
 
+    results = pd.DataFrame()
+    for filename in os.listdir("tmp"):
+        sub_results = pd.read_csv(f"tmp/{filename}")
+        results = results.append(sub_results)
+    results.to_csv(f"{result_name}.csv")
     pbar.close()
 
 
@@ -224,6 +233,6 @@ if __name__ == '__main__':
     angles = ["shoulder", "elbow", "hip", "knee"]
 
     # freeze_support()
-    # run_search(DATA_PATH, window_sizes, angles, ensemble=False, result_name="model_search_kfold")
+    run_search(DATA_PATH, window_sizes, angles, ensemble=False, result_name="model_search_kfold")
     run_search(DATA_PATH, window_sizes, angles, ensemble=True, result_name="ensemble_search_kfold")
     # average_results()
