@@ -134,9 +134,10 @@ def run_search(path, window_sizes, angles, size=0, ensemble=False, result_name="
         etl.generate_fourier_dataset(window_overlap=params["window_overlap"])
 
         with Manager() as manager:
-            synced_results = manager.list()
             for window_size in window_sizes:
                 for angle in angles:
+
+                    synced_results = manager.list()
 
                     right_fourier_path = os.path.join(DATA_PATH, str(window_size), "right_" + angle + ".json")
                     left_fourier_path = os.path.join(DATA_PATH, str(window_size), "left_" + angle + ".json")
@@ -173,9 +174,9 @@ def run_search(path, window_sizes, angles, size=0, ensemble=False, result_name="
                         pool.close()
                         pool.join()
 
-            print("\nCheckpoint created.")
-            results = pd.DataFrame(list(synced_results))
-            results.to_csv(result_name + ".csv")
+                    print("\nCheckpoint created.")
+                    results = pd.DataFrame(list(synced_results))
+                    results.to_csv(f"{result_name}_{str(window_size)}_{angle}.csv")
 
     pbar.close()
 
