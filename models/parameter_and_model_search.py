@@ -9,20 +9,12 @@ import os
 import pandas as pd
 from tqdm import tqdm
 from multiprocessing import freeze_support, Pool, Manager, cpu_count
-from pyod.models.knn import KNN
-from pyod.models.lof import LOF
-from pyod.models.abod import ABOD
-from pyod.models.sod import SOD
-from pyod.models.ocsvm import OCSVM
-from pyod.models.hbos import HBOS
-from pyod.models.cof import COF
-from pyod.models.cblof import CBLOF
 from etl.etl import ETL
 from sklearn import model_selection, neighbors, metrics
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import KFold
-from models import create_models
+from models.create_models import get_models
 
 
 def get_search_parameter():
@@ -36,11 +28,6 @@ def get_search_parameter():
         "window_overlap": [1]
     }
     return parameters
-
-
-def get_models(ensemble=False, pca=10):
-    # Returns every model if ensemble is false and every ensemble methods if true.
-    return create_models.get_models(ensemble=ensemble, pca=pca)
 
 
 def model_testing(data, model):
@@ -79,11 +66,11 @@ def chunkify(large_list, chunk_size):
         yield large_list[i:i + chunk_size]
 
 
-def run_search(path, window_sizes, angles, size=0):
+def run_search(path, window_sizes, angles, size=0, ensemble=False, result_name="search_results"):
     DATA_PATH = path
     grid = model_selection.ParameterGrid(get_search_parameter())
     # Returns base models
-    models = get_models(ensemble=False, knn_methods=["mean", "largest"], pca=10)
+    models = get_models(ensemble=ensemble, knn_methods=["mean", "largest"], pca=10)
     # Returns ensemble models
     # models = get_models(ensemble=True, knn_methods=["mean", "largest"], ensemble_combinations=["average", "maximization"], pca=10)
     kfold_splits = 10
@@ -188,7 +175,7 @@ def run_search(path, window_sizes, angles, size=0):
 
             print("\nCheckpoint created.")
             results = pd.DataFrame(list(synced_results))
-            results.to_csv("model_search_results.csv")
+            results.to_csv(result_name + ".csv")
 
     pbar.close()
 
@@ -231,10 +218,11 @@ def average_results():
 
 
 if __name__ == '__main__':
-    DATA_PATH = "C://Users//haavalo//Desktop//Master//Dataset"
+    DATA_PATH = "/home/erlend/datasets"
     window_sizes = [128, 256, 512, 1024]
     angles = ["shoulder", "elbow", "hip", "knee"]
 
-    freeze_support()
-    run_search(DATA_PATH, window_sizes, angles)
+    # freeze_support()
+    # run_search(DATA_PATH, window_sizes, angles, ensemble=False, result_name="model_search_kfold")
+    run_search(DATA_PATH, window_sizes, angles, ensemble=True, result_name="ensemble_search_kfold")
     # average_results()

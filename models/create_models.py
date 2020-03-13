@@ -5,7 +5,13 @@ from pyod.models.lof import LOF
 from pyod.models.ocsvm import OCSVM
 
 
-def get_models(ensemble=False, knn_methods=["mean", "largest"], ensemble_combinations=["average", "maximization"], pca=10):
+def get_models(ensemble=False, knn_methods=None, ensemble_combinations=None, pca=10):
+
+    if knn_methods is None:
+        knn_methods = ["mean", "largest"]
+    if ensemble_combinations is None:
+        ensemble_combinations = ["average", "maximization"]
+
     if not ensemble:
         return create_models(knn_methods, pca)
     if ensemble:
