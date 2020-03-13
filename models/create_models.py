@@ -5,12 +5,42 @@ from pyod.models.lof import LOF
 from pyod.models.ocsvm import OCSVM
 
 
-def create_models():
+def get_models(ensemble=False, pca=10):
+    if not ensemble:
+        return create_models(pca)
+    if ensemble:
+        return create_ensemble_models(pca)
+
+
+def create_ensemble_models(pca):
+    ensemble_combinations = ["average", "maximization"]
+    methods = ["mean", "largest"]
+    model_list = []
+
+    for ensemble_combination in ensemble_combinations:
+        for i in range(1, pca + 1):
+            for j in range(1, pca + 1):
+                for method in methods:
+                    element = {
+                        "model": SimpleDetectorAggregator,
+                        "supervised": False,
+                        "parameters": {
+                            "method": ensemble_combination,
+                            "base_estimators": [
+                                KNN(n_neighbors=i, method=method),
+                                LOF(n_neighbors=j),
+                                ABOD(),
+                                OCSVM()
+                            ],
+                        }
+                    }
+                    model_list.append(element)
+    return model_list
+
+
+def create_models(pca):
     models = [KNN, LOF, ABOD, OCSVM]
     methods = ["mean", "largest"]
-    ensemble_combinations = ["average", "maximization"]
-    pca = 10
-
     model_list = []
 
     for model in models:
@@ -50,25 +80,6 @@ def create_models():
                 "parameters": {}
             }
             model_list.append(element)
-
-    for ensemble_combination in ensemble_combinations:
-        for i in range(1, pca + 1):
-            for j in range(1, pca + 1):
-                for method in methods:
-                    element = {
-                        "model": SimpleDetectorAggregator,
-                        "supervised": False,
-                        "parameters": {
-                            "method": ensemble_combination,
-                            "base_estimators": [
-                                KNN(n_neighbors=i, method=method),
-                                LOF(n_neighbors=j),
-                                ABOD(),
-                                OCSVM()
-                            ],
-                        }
-                    }
-                    model_list.append(element)
 
     return model_list
 

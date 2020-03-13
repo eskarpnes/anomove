@@ -38,8 +38,9 @@ def get_search_parameter():
     return parameters
 
 
-def get_models():
-    return create_models.create_models()
+def get_models(ensemble=False, pca=10):
+    # Returns every model if ensemble is false and every ensemble methods if true.
+    return create_models.get_models(ensemble=ensemble, pca=pca)
 
 
 def model_testing(data, model):
@@ -81,7 +82,12 @@ def chunkify(large_list, chunk_size):
 def run_search(path, window_sizes, angles, size=0):
     DATA_PATH = path
     grid = model_selection.ParameterGrid(get_search_parameter())
-    models = get_models()
+    # Returns every model if ensemble is false and every ensemble methods if true. Pca determine the number of k
+    # in KNN and LOF
+    models = get_models(ensemble=False, pca=10)
+    kfold_splits = 10
+    kf = KFold(n_splits=kfold_splits)
+
     if os.path.exists("model_search_results.csv"):
         results = pd.read_csv("model_search_results.csv", index_col=0)
     else:
@@ -91,12 +97,13 @@ def run_search(path, window_sizes, angles, size=0):
                      "sensitivity", "specificity"]
         )
 
-    pbar = tqdm(total=len(models) * len(window_sizes) * len(angles))
+    print(f"The number of methods without k-folding are: {str(len(models))}")
+    pbar = tqdm(total=len(models) * len(window_sizes) * len(angles) * kfold_splits)
 
     def update_progress(*a):
         pbar.update()
 
-    kf = KFold(n_splits=10)
+
     for i, params in enumerate(grid):
 
         print(f"Running with params: \n{params}")
