@@ -4,7 +4,7 @@ sys.path.append('../')
 import warnings
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
-import time
+import shutil
 import os
 import pandas as pd
 from tqdm import tqdm
@@ -187,6 +187,7 @@ def run_search(path, window_sizes, angles, size=0, ensemble=False, result_name="
         sub_results = pd.read_csv(f"tmp/{filename}")
         results = results.append(sub_results)
     results.to_csv(f"{result_name}.csv")
+    shutil.rmtree("tmp")
     pbar.close()
 
 
