@@ -1,5 +1,5 @@
 import sys
-
+import gc
 sys.path.append('../')
 import warnings
 
@@ -91,7 +91,6 @@ def run_search(path, window_sizes, angles, size=0, ensemble=False, result_name="
     def update_progress(*a):
         pbar.update()
 
-
     for i, params in enumerate(grid):
 
         print(f"Running with params: \n{params}")
@@ -136,10 +135,9 @@ def run_search(path, window_sizes, angles, size=0, ensemble=False, result_name="
         if not os.path.exists("tmp"):
             os.mkdir("tmp")
 
-        with Manager() as manager:
-            for window_size in window_sizes:
-                for angle in angles:
-
+        for window_size in window_sizes:
+            for angle in angles:
+                with Manager() as manager:
                     synced_results = manager.list()
 
                     right_fourier_path = os.path.join(DATA_PATH, str(window_size), "right_" + angle + ".json")
@@ -151,7 +149,7 @@ def run_search(path, window_sizes, angles, size=0, ensemble=False, result_name="
                     df.reset_index(drop=True, inplace=True)
                     df_features = pd.DataFrame(df.data.tolist())
 
-                    for batch in chunkify(models, 10):
+                    for batch in chunkify(models, 5):
                         pool = Pool()
                         for model in batch:
                             if params["pca"] != 0:
@@ -181,12 +179,14 @@ def run_search(path, window_sizes, angles, size=0, ensemble=False, result_name="
                     results = pd.DataFrame(list(synced_results))
                     result_path = os.path.join("tmp", f"{result_name}_{str(window_size)}_{angle}.csv")
                     results.to_csv(result_path)
+                    del results
+                gc.collect()
 
-    results = pd.DataFrame()
+    final_results = pd.DataFrame()
     for filename in os.listdir("tmp"):
         sub_results = pd.read_csv(f"tmp/{filename}")
-        results = results.append(sub_results)
-    results.to_csv(f"{result_name}.csv")
+        final_results = final_results.append(sub_results)
+    final_results.to_csv(f"{result_name}.csv")
     shutil.rmtree("tmp")
     pbar.close()
 
