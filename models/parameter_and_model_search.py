@@ -176,8 +176,26 @@ def run_search(path, window_sizes, angles, size=0, ensemble=False, result_name="
                         pool.close()
                         pool.join()
 
+
                     print("\nCheckpoint created.")
-                    results = pd.DataFrame(list(synced_results))
+                    results = []
+                    for result in synced_results:
+                        results = results.append({
+                            "model": result["model"],
+                            "model_parameter": result["parameters"],
+                            "noise_reduction": params["noise_reduction"],
+                            "minimal_movement": params["minimal_movement"],
+                            "bandwidth": params["bandwidth"],
+                            "pooling": params["pooling"],
+                            "sma": params["sma"],
+                            "window_overlap": params["window_overlap"],
+                            "pca": params["pca"],
+                            "window_size": str(window_size),
+                            "angle": result["angle"],
+                            "sensitivity": result["sensitivity"],
+                            "specificity": result["specificity"]
+                        })
+                    results = pd.DataFrame(results)
                     result_path = os.path.join("tmp", f"{result_name}_{str(window_size)}_{angle}.csv")
                     results.to_csv(result_path)
                     del results
