@@ -149,7 +149,7 @@ def run_search(path, window_sizes, angles, size=0, ensemble=False, result_name="
                     df.reset_index(drop=True, inplace=True)
                     df_features = pd.DataFrame(df.data.tolist())
 
-                    for batch in chunkify(models, 5):
+                    for batch in chunkify(models, 1):
                         pool = Pool()
 
                         if params["pca"] != 0:
@@ -180,7 +180,7 @@ def run_search(path, window_sizes, angles, size=0, ensemble=False, result_name="
                     print("\nCheckpoint created.")
                     results = []
                     for result in synced_results:
-                        results = results.append({
+                        results.append({
                             "model": result["model"],
                             "model_parameter": result["parameters"],
                             "noise_reduction": params["noise_reduction"],
