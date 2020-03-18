@@ -5,7 +5,7 @@ from pyod.models.lof import LOF
 from pyod.models.ocsvm import OCSVM
 
 
-def get_models(ensemble=False, knn_methods=None, ensemble_combinations=None, pca=10):
+def get_models(ensemble=False, knn_methods=None, ensemble_combinations=None, pca=10, only_LOF=False):
 
     if knn_methods is None:
         knn_methods = ["mean", "largest"]
@@ -15,7 +15,10 @@ def get_models(ensemble=False, knn_methods=None, ensemble_combinations=None, pca
     if not ensemble:
         return create_models(knn_methods, pca)
     if ensemble:
-        return create_ensemble_models(knn_methods, ensemble_combinations, pca)
+        if only_LOF:
+            return create_ensemble_LOF(ensemble_combinations, pca)
+        else:
+            return create_ensemble_models(knn_methods, ensemble_combinations, pca)
 
 
 def create_ensemble_models(knn_methods, ensemble_combinations, pca):
@@ -86,3 +89,28 @@ def create_models(methods, pca):
 
     return model_list
 
+
+def create_ensemble_LOF(ensemble_combinations, pca):
+    model_list = []
+    for ensemble_combination in ensemble_combinations:
+        for i in range(3, pca + 1):
+            for j in range(3, pca + 1):
+                for k in range(3, pca + 1):
+                    if i == j or i == k or j == k:
+                        continue
+                    else:
+                        element = {
+                            "model": SimpleDetectorAggregator,
+                            "supervised": False,
+                            "parameters": {
+                                "method": ensemble_combination,
+                                "base_estimators": [
+                                    LOF(n_neighbors=i),
+                                    LOF(n_neighbors=j),
+                                    LOF(n_neighbors=k),
+                                ],
+                            }
+                        }
+                        model_list.append(element)
+
+    return model_list

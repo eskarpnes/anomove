@@ -70,9 +70,11 @@ def run_search(path, window_sizes, angles, size=0, ensemble=False, result_name="
     DATA_PATH = path
     grid = model_selection.ParameterGrid(get_search_parameter())
     # Returns base models
-    models = get_models(ensemble=ensemble, knn_methods=["mean", "largest"], pca=10)
+    #models = get_models(ensemble=ensemble, knn_methods=["mean", "largest"], pca=10)
     # Returns ensemble models
     # models = get_models(ensemble=True, knn_methods=["mean", "largest"], ensemble_combinations=["average", "maximization"], pca=10)
+    # Returns ensemble with only LOF
+    models = get_models(ensemble=True, ensemble_combinations=["average"], pca=10, only_LOF=True)
     kfold_splits = 10
     kf = KFold(n_splits=kfold_splits)
 
@@ -228,8 +230,8 @@ def async_model_testing(model_data, model, synced_result, angle):
     })
 
 
-def average_results():
-    results = pd.read_csv("model_search_results_testing.csv", index_col=0)
+def average_results(file):
+    results = pd.read_csv(file, index_col=0, engine="python")
 
     results = results.groupby([
         "model",
@@ -244,7 +246,7 @@ def average_results():
         "window_size",
         "angle"
     ]).mean().reset_index()
-    results.to_csv("model_search_results_testing_fixed.csv")
+    results.to_csv(file[0:-4] + "_groupBy.csv")
 
 
 if __name__ == '__main__':
@@ -253,6 +255,6 @@ if __name__ == '__main__':
     angles = ["shoulder", "elbow", "hip", "knee"]
 
     # freeze_support()
-    run_search(DATA_PATH, window_sizes, angles, ensemble=False, result_name="model_search_kfold")
+    # run_search(DATA_PATH, window_sizes, angles, ensemble=False, result_name="model_search_kfold")
     run_search(DATA_PATH, window_sizes, angles, ensemble=True, result_name="ensemble_search_kfold")
-    # average_results()
+    #average_results("results//ensemble_search_kfold.csv")
