@@ -114,3 +114,16 @@ def create_ensemble_LOF(ensemble_combinations, pca):
                         model_list.append(element)
 
     return model_list
+
+
+def create_abod(min_neighbours, max_neighbours):
+    model_list = []
+    for i in range(min_neighbours, max_neighbours + 1):
+        model_list.append({
+            "model": ABOD,
+            "supervised": False,
+            "parameters": {
+                "n_neighbors": i
+            }
+        })
+    return model_list

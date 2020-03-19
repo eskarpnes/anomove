@@ -14,7 +14,7 @@ from sklearn import model_selection, neighbors, metrics
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import KFold
-from models.create_models import get_models
+from models.create_models import get_models, create_abod
 
 
 def get_search_parameter():
@@ -66,15 +66,9 @@ def chunkify(large_list, chunk_size):
         yield large_list[i:i + chunk_size]
 
 
-def run_search(path, window_sizes, angles, size=0, ensemble=False, result_name="search_results"):
+def run_search(path, window_sizes, angles, models, size=0, result_name="search_results"):
     DATA_PATH = path
     grid = model_selection.ParameterGrid(get_search_parameter())
-    # Returns base models
-    #models = get_models(ensemble=ensemble, knn_methods=["mean", "largest"], pca=10)
-    # Returns ensemble models
-    # models = get_models(ensemble=True, knn_methods=["mean", "largest"], ensemble_combinations=["average", "maximization"], pca=10)
-    # Returns ensemble with only LOF
-    models = get_models(ensemble=True, ensemble_combinations=["average"], pca=10, only_LOF=True)
     kfold_splits = 10
     kf = KFold(n_splits=kfold_splits)
 
@@ -255,6 +249,7 @@ if __name__ == '__main__':
     angles = ["shoulder", "elbow", "hip", "knee"]
 
     # freeze_support()
-    # run_search(DATA_PATH, window_sizes, angles, ensemble=False, result_name="model_search_kfold")
-    run_search(DATA_PATH, window_sizes, angles, ensemble=True, result_name="ensemble_search_kfold")
+    models = create_abod(1, 20)
+    run_search(DATA_PATH, window_sizes, angles, models, result_name="model_abod_search_kfold")
+    # run_search(DATA_PATH, window_sizes, angles, ensemble=True, result_name="ensemble_search_kfold")
     #average_results("results//ensemble_search_kfold.csv")
