@@ -14,7 +14,8 @@ from sklearn import model_selection, neighbors, metrics
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import KFold
-from models.create_models import get_models, create_tunable_ensemble
+from models.create_models import get_models, create_tunable_ensemble, create_abod
+
 
 
 def get_search_parameter():
@@ -66,7 +67,7 @@ def chunkify(large_list, chunk_size):
         yield large_list[i:i + chunk_size]
 
 
-def run_search(path, window_sizes, angles, size=0, ensemble=False, result_name="search_results"):
+def run_search(path, window_sizes, angles, models, size=0, result_name="search_results"):
     DATA_PATH = path
     grid = model_selection.ParameterGrid(get_search_parameter())
     # Returns base models
