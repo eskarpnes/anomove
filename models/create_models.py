@@ -94,23 +94,45 @@ def create_ensemble_LOF(ensemble_combinations, pca):
     model_list = []
     for ensemble_combination in ensemble_combinations:
         for i in range(3, pca + 1):
-            for j in range(3, pca + 1):
-                for k in range(3, pca + 1):
-                    if i == j or i == k or j == k:
-                        continue
-                    else:
-                        element = {
-                            "model": SimpleDetectorAggregator,
-                            "supervised": False,
-                            "parameters": {
-                                "method": ensemble_combination,
-                                "base_estimators": [
-                                    LOF(n_neighbors=i),
-                                    LOF(n_neighbors=j),
-                                    LOF(n_neighbors=k),
-                                ],
-                            }
+            for j in range(i + 1, pca + 1):
+                for k in range(j + 1, pca + 1):
+                    element = {
+                        "model": SimpleDetectorAggregator,
+                        "supervised": False,
+                        "parameters": {
+                            "method": ensemble_combination,
+                            "base_estimators": [
+                                LOF(n_neighbors=i),
+                                LOF(n_neighbors=j),
+                                LOF(n_neighbors=k),
+                            ],
                         }
-                        model_list.append(element)
+                    }
+                    model_list.append(element)
+    print(len(model_list))
+    return model_list
+
+
+def create_tunable_ensemble(knn_neighbors, lof_neighbors, abod_neighbors):
+    model_list = []
+    for knn_neighbor in knn_neighbors:
+        for lof_neighbor in lof_neighbors:
+            for abod_neighbor in abod_neighbors:
+                element = {
+                    "model": SimpleDetectorAggregator,
+                    "supervised": False,
+                    "parameters": {
+                        "method": "average",
+                        "base_estimators": [
+                            KNN(n_neighbors=knn_neighbor),
+                            LOF(n_neighbors=lof_neighbor),
+                            ABOD(n_neighbors=abod_neighbor),
+                            OCSVM()
+                        ],
+                    }
+                }
+                model_list.append(element)
 
     return model_list
+
+

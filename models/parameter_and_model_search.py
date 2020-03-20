@@ -14,7 +14,7 @@ from sklearn import model_selection, neighbors, metrics
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import KFold
-from models.create_models import get_models
+from models.create_models import get_models, create_tunable_ensemble
 
 
 def get_search_parameter():
@@ -74,8 +74,13 @@ def run_search(path, window_sizes, angles, size=0, ensemble=False, result_name="
     # Returns ensemble models
     # models = get_models(ensemble=True, knn_methods=["mean", "largest"], ensemble_combinations=["average", "maximization"], pca=10)
     # Returns ensemble with only LOF
-    models = get_models(ensemble=True, ensemble_combinations=["average"], pca=10, only_LOF=True)
-    kfold_splits = 10
+    # models = get_models(ensemble=True, ensemble_combinations=["average"], pca=10, only_LOF=True)
+    # Returns tunable neighbor parameter ensemble
+    knn_neighbors = [5, 9, 10]
+    lof_neighbors = [6, 7, 8, 9, 10]
+    abod_neighbors = [3, 4, 5, 6]
+    models = create_tunable_ensemble(knn_neighbors, lof_neighbors, abod_neighbors)
+    kfold_splits = 5
     kf = KFold(n_splits=kfold_splits)
 
     if os.path.exists("model_search_results.csv"):
@@ -256,5 +261,5 @@ if __name__ == '__main__':
 
     # freeze_support()
     # run_search(DATA_PATH, window_sizes, angles, ensemble=False, result_name="model_search_kfold")
-    run_search(DATA_PATH, window_sizes, angles, ensemble=True, result_name="ensemble_search_kfold")
-    #average_results("results//ensemble_search_kfold.csv")
+    # run_search(DATA_PATH, window_sizes, angles, ensemble=True, result_name="ensemble_search_kfold")
+    average_results("results//model_abod_search_kfold.csv")
