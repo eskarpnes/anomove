@@ -14,7 +14,7 @@ from sklearn import model_selection, neighbors, metrics
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import KFold
-from models.create_models import get_models, create_tunable_ensemble, create_abod
+from models.create_models import get_models, create_tunable_ensemble, create_abod, create_novelty_models
 
 
 
@@ -41,8 +41,8 @@ def model_testing(data, model):
     else:
         clf.fit(X_train)
 
-    y_train_pred = clf.labels_  # binary labels (0: inliers, 1: outliers)
-    y_train_scores = clf.decision_scores_  # raw outlier scores
+    # y_train_pred = clf.labels_  # binary labels (0: inliers, 1: outliers)
+    # y_train_scores = clf.decision_scores_  # raw outlier scores
 
     y_test_pred = clf.predict(X_test)  # outlier labels (0 or 1)
     y_test_scores = clf.decision_function(X_test)  # outlier scores
@@ -67,20 +67,9 @@ def chunkify(large_list, chunk_size):
         yield large_list[i:i + chunk_size]
 
 
-def run_search(path, window_sizes, angles, models, size=0, result_name="search_results"):
+def run_search(path, window_sizes, angles, models, size=0, result_name="search_results", novelty=False):
     DATA_PATH = path
     grid = model_selection.ParameterGrid(get_search_parameter())
-    # Returns base models
-    #models = get_models(ensemble=ensemble, knn_methods=["mean", "largest"], pca=10)
-    # Returns ensemble models
-    # models = get_models(ensemble=True, knn_methods=["mean", "largest"], ensemble_combinations=["average", "maximization"], pca=10)
-    # Returns ensemble with only LOF
-    # models = get_models(ensemble=True, ensemble_combinations=["average"], pca=10, only_LOF=True)
-    # Returns tunable neighbor parameter ensemble
-    knn_neighbors = [5, 9, 10]
-    lof_neighbors = [6, 7, 8, 9, 10]
-    abod_neighbors = [3, 4, 5, 6]
-    models = create_tunable_ensemble(knn_neighbors, lof_neighbors, abod_neighbors)
     kfold_splits = 5
     kf = KFold(n_splits=kfold_splits)
 
@@ -172,8 +161,11 @@ def run_search(path, window_sizes, angles, models, size=0, result_name="search_r
 
                         for train_index, test_index in kf.split(data):
                             x_train = data.iloc[train_index]
-                            x_test = data.iloc[test_index]
                             y_train = labels[train_index]
+                            if novelty:
+                                x_train = x_train.loc[y_train == 0]
+                                y_train = y_train.loc[y_train == 0]
+                            x_test = data.iloc[test_index]
                             y_test = labels[test_index]
 
                             model_data = x_train, x_test, y_train, y_test
@@ -222,8 +214,9 @@ def async_model_testing(model_data, model, synced_result, angle):
     try:
         # print(f"Started fitting {model['model']}")
         sensitivity, specificity = model_testing(model_data, model)
-    except:
+    except Exception as e:
         print("Unexpected error:", sys.exc_info()[0])
+        print(e)
         print(f"{model['model']} crashed.")
 
         sensitivity, specificity = ("crashed", "crashed")
@@ -260,7 +253,9 @@ if __name__ == '__main__':
     window_sizes = [128, 256, 512, 1024]
     angles = ["shoulder", "elbow", "hip", "knee"]
 
+    models = create_novelty_models(1, 20)
+
+    run_search(DATA_PATH, window_sizes, angles, models, result_name="novelty_search", novelty=True)
+
     # freeze_support()
-    # run_search(DATA_PATH, window_sizes, angles, ensemble=False, result_name="model_search_kfold")
-    # run_search(DATA_PATH, window_sizes, angles, ensemble=True, result_name="ensemble_search_kfold")
-    average_results("results//model_abod_search_kfold.csv")
+    # average_results("results//model_abod_search_kfold.csv")
