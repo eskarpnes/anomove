@@ -191,7 +191,6 @@ class ETL:
 
     def preprocess_pooled(self, batch_size=cpu_count()):
 
-        # cima_id = f"{'validation' if self.validation else 'data'}{'_' + str(self.size) if self.size != 0 else ''}_{self.sma_window}"
         if self.cache:
             save_path = os.path.join("cache", self.cima_id)
 
