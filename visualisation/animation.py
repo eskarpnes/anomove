@@ -61,8 +61,17 @@ def lenght_color(length):
     red_val = 255 - length * 3 if length < 85 else 0
     return (0, green_val, red_val)
 
+def result_color(result):
+    if result == -1:
+        return (200, 200, 200)
+    elif result == 0:
+        return (60, 220, 60)
+    elif result == 1:
+        return (60, 60, 220)
+    else:
+        return ORANGE
 
-def draw_skeleton(frame_number, row):
+def draw_skeleton(frame_number, row, result=None):
     frame = np.full((height, width, 3), 220, np.uint8)
     # draw = ImageDraw.Draw(frame)
 
@@ -97,8 +106,14 @@ def draw_skeleton(frame_number, row):
         end_y = row[vector[1] + "_y"]
         end_coordinates = scale_to_pixels(end_x, end_y)
         length = np.sqrt((start_x - end_x) ** 2 + (start_y - end_y) ** 2)
-        frame = cv2.circle(frame, start_coordinates, 3, ORANGE, 3)
-        frame = cv2.circle(frame, end_coordinates, 3, ORANGE, 3)
+        try:
+            start_color = result_color(result[vector[0]])
+            end_color = result_color(result[vector[1]])
+            frame = cv2.circle(frame, start_coordinates, 6, start_color, 6)
+            frame = cv2.circle(frame, end_coordinates, 6, end_color, 6)
+        except KeyError:
+            # Expected, pass
+            pass
         frame = cv2.line(frame, start_coordinates, end_coordinates, (0,0,0), 3)
 
     frame_string = str(frame_number)
@@ -152,7 +167,7 @@ def scale_to_pixels_3d(x, y):
 def scale_to_pixels(x, y):
     return int(x * width), int(y * height)
 
-def draw_skeleton_3d(frame_number, row):
+def draw_skeleton_3d(frame_number, row, result=None):
     frame = np.full((height, width, 3), 220, np.uint8)
 
     origin = scale_to_pixels_3d(*isometric_projection(0, 0, 0))
@@ -191,8 +206,14 @@ def draw_skeleton_3d(frame_number, row):
         end_coordinates = isometric_projection(end_x, end_y, end_z)
         start_coordinates = scale_to_pixels_3d(*start_coordinates)
         end_coordinates = scale_to_pixels_3d(*end_coordinates)
-        frame = cv2.circle(frame, start_coordinates, 3, ORANGE, 3)
-        frame = cv2.circle(frame, end_coordinates, 3, ORANGE, 3)
+        try:
+            start_color = result_color(result[vector[0]])
+            end_color = result_color(result[vector[1]])
+            frame = cv2.circle(frame, start_coordinates, 6, start_color, 6)
+            frame = cv2.circle(frame, end_coordinates, 6, end_color, 6)
+        except KeyError:
+            # Expected, pass
+            pass
         frame = cv2.line(frame, start_coordinates, end_coordinates, (0, 0, 0), 3)
 
     return frame
@@ -214,7 +235,7 @@ def animate(dataframe, data_path, video_name):
     pbar.close()
 
 
-def animate_3d(dataframe, data_path, video_name):
+def animate_3d(dataframe, data_path, video_name, result=None):
     out_path = os.path.join(data_path, video_name + ".avi")
 
     out = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*'XVID'), 30.0, (width, height*2))
@@ -222,8 +243,10 @@ def animate_3d(dataframe, data_path, video_name):
     pbar = tqdm(total=len(dataframe))
 
     for i, row in dataframe.iterrows():
-        frame_3d = draw_skeleton_3d(i, row)
-        frame_2d = draw_skeleton(i, row)
+        if result is not None:
+            result_row = result.iloc[i, :]
+        frame_3d = draw_skeleton_3d(i, row, result=result_row)
+        frame_2d = draw_skeleton(i, row, result=result_row)
         frame = np.append(frame_3d, frame_2d, 0)
         out.write(frame)
         pbar.update()

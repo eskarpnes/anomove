@@ -86,13 +86,23 @@ class ETL:
             "right_knee": ["right_hip", "right_knee", "right_ankle"],
             "left_knee": ["left_hip", "left_knee", "left_ankle"]
         }
+        self.cima_id = None
+        self.cache = True
+
+    def load_infant(self, infant_id, fps=30):
+        self.validation = False
+        self.cache = False
+        path = os.path.join(self.DATA_PATH, infant_id + ".csv")
+        dataframe = pd.read_csv(path)
+        self.cima[infant_id] = {"data": dataframe, "label": None, "fps": fps}
+
 
     def load(self, dataset, validation=False):
 
         self.validation = validation
 
-        cima_id = f"{'validation' if validation else 'data'}{'_' + str(self.size) if self.size != 0 else ''}_{self.sma_window}"
-        save_path = os.path.join("cache", cima_id)
+        self.cima_id = f"{'validation' if validation else 'data'}{'_' + str(self.size) if self.size != 0 else ''}_{self.sma_window}"
+        save_path = os.path.join("cache", self.cima_id)
 
         if os.path.exists(save_path):
             with open(save_path, "rb") as f:
@@ -181,12 +191,12 @@ class ETL:
 
     def preprocess_pooled(self, batch_size=cpu_count()):
 
-        cima_id = f"{'validation' if self.validation else 'data'}{'_' + str(self.size) if self.size != 0 else ''}_{self.sma_window}"
-        save_path = os.path.join("cache", cima_id)
+        if self.cache:
+            save_path = os.path.join("cache", self.cima_id)
 
-        if os.path.exists(save_path):
-            print("Using cached preprocessed dataset")
-            return
+            if os.path.exists(save_path):
+                print("Using cached preprocessed dataset")
+                return
 
         # pbar = tqdm(total=int(np.ceil(len(self.cima) / batch_size)))
 
@@ -218,11 +228,12 @@ class ETL:
 
         shutil.rmtree("tmp")
 
-        if not os.path.exists("cache"):
-            os.mkdir("cache")
+        if self.cache:
+            if not os.path.exists("cache"):
+                os.mkdir("cache")
 
-        with open(save_path, "wb") as f:
-            pickle.dump(self.cima, f)
+            with open(save_path, "wb") as f:
+                pickle.dump(self.cima, f)
 
 
 
@@ -363,24 +374,17 @@ class ETL:
 
     def generate_fourier_dataset(self, window_overlap=1):
         num_processes = len(self.window_sizes) * len(self.angles.keys())
-        # if cpu_count() > 12:
-        #     pool = Pool(num_processes)
         pbar = tqdm(total=num_processes)
 
         def update_progress(*a):
             pbar.update()
 
         for window_size in self.window_sizes:
-            # if cpu_count() <= 12:
             pool = Pool()
             for angle in self.angles.keys():
-                pool.apply_async(self.generate_fourier_data, args=(window_size, angle, window_size//window_overlap,), callback=update_progress)
-            # if cpu_count() <= 12:
+                pool.apply_async(self.generate_fourier_data, args=(window_size, angle, window_size//window_overlap, True, ), callback=update_progress)
             pool.close()
             pool.join()
-        # if cpu_count() > 12:
-        #     pool.close()
-        #     pool.join()
         pbar.close()
 
     def generate_fourier_all_angles(self, window_size):
@@ -388,7 +392,7 @@ class ETL:
         for angle in self.angles.keys():
             self.generate_fourier_data(window_size, angle)
 
-    def generate_fourier_data(self, window_size, angle, window_step):
+    def generate_fourier_data(self, window_size, angle, window_step, save=False):
         dataset = pd.DataFrame(columns=["label", "data"])
         for key, item in self.cima.items():
             angles = item["angles"]
@@ -404,14 +408,18 @@ class ETL:
                 angle_window = angle_window - angle_window.mean()
                 fourier_data = np.abs(np.fft.fft(angle_window))
                 dataset = dataset.append(
-                    {"id": key, "label": item["label"], "data": list(fourier_data[1:window_size // 2])},
+                    {"frame_start": i, "id": key, "label": item["label"], "data": list(fourier_data[1:window_size // 2])},
                     ignore_index=True)
         if self.bandwidth != 0:
             dataset = self.generate_frequency_bands(dataset)
-        self.save_fourier_dataset(window_size, angle, dataset)
+        if save:
+            self.save_fourier_dataset(window_size, angle, dataset)
+        else:
+            return dataset
 
     def generate_frequency_bands(self, dataset):
         # Will not check if last window is of size band_width
+        frequency_bands = []
         for idx, row in dataset.iterrows():
             data_series = pd.Series(row["data"])
             means = []
@@ -422,7 +430,9 @@ class ETL:
                     means.append(window.mean())
                 if self.pooling == "max":
                     means.append(window.max())
-            dataset["data"][idx] = means
+            # dataset["data"][idx] = means
+            frequency_bands.append(means)
+        dataset["data"] = pd.Series(frequency_bands)
         return dataset
 
     def save_fourier_dataset(self, window_size, angle, data):
@@ -433,7 +443,7 @@ class ETL:
 
 
 if __name__ == "__main__":
-    etl = ETL("/home/login/datasets", [128, 256, 512, 1024], size=75)
+    etl = ETL("/home/login/datasets", [128, 256, 512, 1024], size=16)
     etl.load("CIMA", validation=True)
     etl.preprocess_pooled()
-    etl.generate_fourier_dataset(window_overlap=4)
+    etl.generate_fourier_dataset(window_overlap=1)
