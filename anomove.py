@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 from etl.etl import ETL
-from models import predictor
+from models.predictor import Predictor
 from visualisation import animation
 
 
@@ -13,12 +13,15 @@ def load_validation_set(data_path):
 
 
 def load_infant(data_path):
-    etl = ETL(data_path, [128, 256, 512, 1024])
+    window_sizes = [128, 256, 512, 1024]
+    etl = ETL(data_path, window_sizes)
 
 
-def evaluate_infant(infant):
+def evaluate_infant(infant_id):
     # Get a prediction from an infant on a per frame basis
-    infant["predictions"] = predictor.predict(infant["angles"])
+    predictor = Predictor()
+    predictor.load_model("test_model")
+    infant = predictor.predict("/home/login/datasets/CIMA/data", infant_id)
     visualise_result(infant)
 
 
@@ -33,6 +36,4 @@ def visualise_result(infant, output_path="", video_name="result"):
 
 cima = load_validation_set("/home/login/datasets")
 
-for key, infant in cima.items():
-    evaluate_infant(infant)
-    break
+evaluate_infant("001")

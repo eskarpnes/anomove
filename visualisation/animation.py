@@ -107,8 +107,8 @@ def draw_skeleton(frame_number, row, result=None):
         end_coordinates = scale_to_pixels(end_x, end_y)
         length = np.sqrt((start_x - end_x) ** 2 + (start_y - end_y) ** 2)
         try:
-            start_color = result_color(result[vector[0] + "_pred"])
-            end_color = result_color(result[vector[1] + "_pred"])
+            start_color = result_color(result[vector[0]])
+            end_color = result_color(result[vector[1]])
             frame = cv2.circle(frame, start_coordinates, 6, start_color, 6)
             frame = cv2.circle(frame, end_coordinates, 6, end_color, 6)
         except KeyError:
@@ -207,8 +207,8 @@ def draw_skeleton_3d(frame_number, row, result=None):
         start_coordinates = scale_to_pixels_3d(*start_coordinates)
         end_coordinates = scale_to_pixels_3d(*end_coordinates)
         try:
-            start_color = result_color(result[vector[0] + "_pred"])
-            end_color = result_color(result[vector[1] + "_pred"])
+            start_color = result_color(result[vector[0]])
+            end_color = result_color(result[vector[1]])
             frame = cv2.circle(frame, start_coordinates, 6, start_color, 6)
             frame = cv2.circle(frame, end_coordinates, 6, end_color, 6)
         except KeyError:
