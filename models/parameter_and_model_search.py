@@ -1,49 +1,35 @@
 import sys
+import gc
 sys.path.append('../')
-import time
+import warnings
+
+warnings.simplefilter(action='ignore', category=FutureWarning)
+import shutil
 import os
 import pandas as pd
 from tqdm import tqdm
-from multiprocessing import freeze_support, Pool, Manager
-from pyod.models.knn import KNN
-from pyod.models.lof import LOF
-from pyod.models.abod import ABOD
-from pyod.models.sod import SOD
-from pyod.models.ocsvm import OCSVM
-from pyod.models.hbos import HBOS
-from pyod.models.cof import COF
-from pyod.models.cblof import CBLOF
+from multiprocessing import freeze_support, Pool, Manager, cpu_count
 from etl.etl import ETL
 from sklearn import model_selection, neighbors, metrics
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-from models import analyse_results as analyse
+from sklearn.model_selection import KFold
+from models.create_models import get_models, create_tunable_ensemble, create_abod
 
-from predictor import Predictor
+
 
 def get_search_parameter():
     parameters = {
         "noise_reduction": ["movement"],
-        "minimal_movement": [0.02],
+        "minimal_movement": [0.1],
         "pooling": ["mean"],
-        "sma": [5],
+        "sma": [3],
         "bandwidth": [5],
         "pca": [10],
-        "window_overlap": [2]
+        "window_overlap": [1]
     }
     return parameters
 
-def get_models():
-    models = [
-        {
-            "model": KNN,
-            "supervised": False,
-            "parameters": {
-                "n_neighbors": 5
-            }
-        }
-    ]
-    return models
 
 def model_testing(data, model):
     X_train, X_test, y_train, y_test = data
@@ -54,10 +40,6 @@ def model_testing(data, model):
         clf.fit(X_train, y_train)
     else:
         clf.fit(X_train)
-
-    predictor = Predictor()
-    predictor.model = clf
-    predictor.save_model("knn")
 
     y_train_pred = clf.labels_  # binary labels (0: inliers, 1: outliers)
     y_train_scores = clf.decision_scores_  # raw outlier scores
@@ -80,20 +62,42 @@ def model_testing(data, model):
     return sensitivity, specificity
 
 
-def run_search(path, window_sizes, angles, size=0):
+def chunkify(large_list, chunk_size):
+    for i in range(0, len(large_list), chunk_size):
+        yield large_list[i:i + chunk_size]
+
+
+def run_search(path, window_sizes, angles, models, size=0, result_name="search_results"):
     DATA_PATH = path
     grid = model_selection.ParameterGrid(get_search_parameter())
-    models = get_models()
+    # Returns base models
+    #models = get_models(ensemble=ensemble, knn_methods=["mean", "largest"], pca=10)
+    # Returns ensemble models
+    # models = get_models(ensemble=True, knn_methods=["mean", "largest"], ensemble_combinations=["average", "maximization"], pca=10)
+    # Returns ensemble with only LOF
+    # models = get_models(ensemble=True, ensemble_combinations=["average"], pca=10, only_LOF=True)
+    # Returns tunable neighbor parameter ensemble
+    knn_neighbors = [5, 9, 10]
+    lof_neighbors = [6, 7, 8, 9, 10]
+    abod_neighbors = [3, 4, 5, 6]
+    models = create_tunable_ensemble(knn_neighbors, lof_neighbors, abod_neighbors)
+    kfold_splits = 5
+    kf = KFold(n_splits=kfold_splits)
 
     if os.path.exists("model_search_results.csv"):
         results = pd.read_csv("model_search_results.csv", index_col=0)
     else:
         results = pd.DataFrame(
-            columns=["model", "model_parameter", "noise_reduction", "minimal_movement", "bandwidth", "pooling", "sma", "window_overlap", "pca", "window_size", "angle",
+            columns=["model", "model_parameter", "noise_reduction", "minimal_movement", "bandwidth", "pooling", "sma",
+                     "window_overlap", "pca", "window_size", "angle",
                      "sensitivity", "specificity"]
         )
 
-    pbar = tqdm(total=len(grid))
+    print(f"The number of methods without k-folding are: {str(len(models))}")
+    pbar = tqdm(total=len(models) * len(window_sizes) * len(angles) * kfold_splits)
+
+    def update_progress(*a):
+        pbar.update()
 
     for i, params in enumerate(grid):
 
@@ -102,7 +106,7 @@ def run_search(path, window_sizes, angles, size=0):
         params_series = pd.Series(params)
         params_keys = list(params.keys())
         in_results = (results[params_keys] == params_series).all(axis=1).sum()
-        if False:
+        if in_results:
             # Parameters has already been ran.
             print("Already done this combination, skipping...\n")
             pbar.update()
@@ -136,20 +140,26 @@ def run_search(path, window_sizes, angles, size=0):
         print("\nGenerating fourier data.")
         etl.generate_fourier_dataset(window_overlap=params["window_overlap"])
 
-        for window_size in window_sizes:
-            with Manager() as manager:
-                for angle in angles:
-                    print("Starting a pool of model fitting.")
-                    synced_results = manager.list()
-                    pool = Pool()
-                    RIGHT_FOURIER_PATH = os.path.join(DATA_PATH, str(window_size), "right_" + angle + ".json")
-                    LEFT_FOURIER_PATH = os.path.join(DATA_PATH, str(window_size), "left_" + angle + ".json")
+        if not os.path.exists("tmp"):
+            os.mkdir("tmp")
 
-                    right_df = pd.read_json(RIGHT_FOURIER_PATH)
-                    left_df = pd.read_json(LEFT_FOURIER_PATH)
+        for window_size in window_sizes:
+            for angle in angles:
+                with Manager() as manager:
+                    synced_results = manager.list()
+
+                    right_fourier_path = os.path.join(DATA_PATH, str(window_size), "right_" + angle + ".json")
+                    left_fourier_path = os.path.join(DATA_PATH, str(window_size), "left_" + angle + ".json")
+
+                    right_df = pd.read_json(right_fourier_path)
+                    left_df = pd.read_json(left_fourier_path)
                     df = right_df.append(left_df)
+                    df.reset_index(drop=True, inplace=True)
                     df_features = pd.DataFrame(df.data.tolist())
-                    for model in models:
+
+                    for batch in chunkify(models, 1):
+                        pool = Pool()
+
                         if params["pca"] != 0:
                             pca = PCA(n_components=params["pca"])
                             df_features = StandardScaler().fit_transform(df_features)
@@ -160,14 +170,25 @@ def run_search(path, window_sizes, angles, size=0):
                             data = df_features
                         labels = df["label"]
 
-                        model_data = model_selection.train_test_split(data, labels, test_size=0.25)
-                        pool.apply_async(async_model_testing, args=(model_data, model, synced_results, angle,))
+                        for train_index, test_index in kf.split(data):
+                            x_train = data.iloc[train_index]
+                            x_test = data.iloc[test_index]
+                            y_train = labels[train_index]
+                            y_test = labels[test_index]
 
-                    pool.close()
-                    pool.join()
+                            model_data = x_train, x_test, y_train, y_test
+                            for model in batch:
+                                pool.apply_async(async_model_testing, args=(model_data, model, synced_results, angle,),
+                                                 callback=update_progress)
 
+                        pool.close()
+                        pool.join()
+
+
+                    print("\nCheckpoint created.")
+                    results = []
                     for result in synced_results:
-                        results = results.append({
+                        results.append({
                             "model": result["model"],
                             "model_parameter": result["parameters"],
                             "noise_reduction": params["noise_reduction"],
@@ -181,18 +202,30 @@ def run_search(path, window_sizes, angles, size=0):
                             "angle": result["angle"],
                             "sensitivity": result["sensitivity"],
                             "specificity": result["specificity"]
-                        }, ignore_index=True)
-        pbar.update()
-        print("\nCheckpoint created.")
-        results.to_csv("model_search_results.csv")
+                        })
+                    results = pd.DataFrame(results)
+                    result_path = os.path.join("tmp", f"{result_name}_{str(window_size)}_{angle}.csv")
+                    results.to_csv(result_path)
+                    del results
+                gc.collect()
+
+    final_results = pd.DataFrame()
+    for filename in os.listdir("tmp"):
+        sub_results = pd.read_csv(f"tmp/{filename}")
+        final_results = final_results.append(sub_results)
+    final_results.to_csv(f"{result_name}.csv")
+    shutil.rmtree("tmp")
     pbar.close()
+
 
 def async_model_testing(model_data, model, synced_result, angle):
     try:
         # print(f"Started fitting {model['model']}")
         sensitivity, specificity = model_testing(model_data, model)
     except:
+        print("Unexpected error:", sys.exc_info()[0])
         print(f"{model['model']} crashed.")
+
         sensitivity, specificity = ("crashed", "crashed")
     synced_result.append({
         "model": model["model"],
@@ -202,12 +235,32 @@ def async_model_testing(model_data, model, synced_result, angle):
         "specificity": specificity
     })
 
+
+def average_results(file):
+    results = pd.read_csv(file, index_col=0, engine="python")
+
+    results = results.groupby([
+        "model",
+        "model_parameter",
+        "noise_reduction",
+        "minimal_movement",
+        "bandwidth",
+        "pooling",
+        "sma",
+        "window_overlap",
+        "pca",
+        "window_size",
+        "angle"
+    ]).mean().reset_index()
+    results.to_csv(file[0:-4] + "_groupBy.csv")
+
+
 if __name__ == '__main__':
     DATA_PATH = "/home/erlend/datasets"
     window_sizes = [128, 256, 512, 1024]
     angles = ["shoulder", "elbow", "hip", "knee"]
 
     # freeze_support()
-    run_search(DATA_PATH, window_sizes, angles)
-    # analyse.print_results("model_search_results.csv")
-
+    # run_search(DATA_PATH, window_sizes, angles, ensemble=False, result_name="model_search_kfold")
+    # run_search(DATA_PATH, window_sizes, angles, ensemble=True, result_name="ensemble_search_kfold")
+    average_results("results//model_abod_search_kfold.csv")
