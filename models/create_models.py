@@ -3,6 +3,7 @@ from pyod.models.abod import ABOD
 from pyod.models.knn import KNN
 from pyod.models.lof import LOF
 from pyod.models.ocsvm import OCSVM
+from sklearn.neighbors import LocalOutlierFactor
 
 
 def get_models(ensemble=False, knn_methods=None, ensemble_combinations=None, pca=10, only_LOF=False):
@@ -148,3 +149,16 @@ def create_abod(min_neighbours, max_neighbours):
         })
     return model_list
 
+
+def create_novelty_models(min_neighbours, max_neighbours):
+    model_list = []
+    for i in range(min_neighbours, max_neighbours + 1):
+        model_list.append({
+            "model": LocalOutlierFactor,
+            "supervised": False,
+            "parameters": {
+                "n_neighbors": i,
+                "novelty": True
+            }
+        })
+    return model_list
