@@ -44,17 +44,23 @@ def model_testing(data, model):
     # y_train_pred = clf.labels_  # binary labels (0: inliers, 1: outliers)
     # y_train_scores = clf.decision_scores_  # raw outlier scores
 
-    y_test_pred = clf.predict(X_test)  # outlier labels (0 or 1)
+    y_test_pred = clf.predict(X_test) # outlier labels (0 or 1)
+    if -1 in y_test_pred:
+        for i in range(len(y_test_pred)):
+            if y_test_pred[i] == 1:
+                y_test_pred[i] = 0
+            elif y_test_pred[i] == -1:
+                y_test_pred[i] = 1
     y_test_scores = clf.decision_function(X_test)  # outlier scores
 
     tn, fp, fn, tp = metrics.confusion_matrix(y_test, y_test_pred, labels=[0, 1]).ravel()
 
-    if tp + fn == 0:
+    if tp == 0:
         sensitivity = 0
     else:
         sensitivity = tp / (tp + fn)
 
-    if tn + fp == 0:
+    if tn == 0:
         specificity = 0
     else:
         specificity = tn / (tn + fp)
