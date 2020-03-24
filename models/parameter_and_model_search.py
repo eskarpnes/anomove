@@ -133,7 +133,7 @@ def run_search(path, window_sizes, angles, models, size=0, result_name="search_r
         print("\nPreprocessing data.")
         etl.preprocess_pooled()
         print("\nGenerating fourier data.")
-        etl.generate_fourier_dataset(window_overlap=params["window_overlap"])
+        # etl.generate_fourier_dataset(window_overlap=params["window_overlap"])
 
         if not os.path.exists("tmp"):
             os.mkdir("tmp")
@@ -258,10 +258,12 @@ if __name__ == '__main__':
     DATA_PATH = "/home/erlend/datasets"
     window_sizes = [128, 256, 512, 1024]
     angles = ["shoulder", "elbow", "hip", "knee"]
-
-    models = create_novelty_models(1, 20)
-
-    run_search(DATA_PATH, window_sizes, angles, models, result_name="novelty_search", novelty=True)
-
+    knn_neighbors = [5, 9, 10]
+    lof_neighbors = [6, 7, 8, 9, 10]
+    abod_neighbors = [3, 4, 5, 6]
+    models = create_tunable_ensemble(knn_neighbors, lof_neighbors, abod_neighbors)
     # freeze_support()
+    run_search(DATA_PATH, window_sizes, angles, models, result_name="tuned_ensemble_search_kfold")
+    # run_search(DATA_PATH, window_sizes, angles, ensemble=False, result_name="model_search_kfold")
+    # run_search(DATA_PATH, window_sizes, angles, ensemble=True, result_name="ensemble_search_kfold")
     # average_results("results//model_abod_search_kfold.csv")
