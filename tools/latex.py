@@ -65,7 +65,7 @@ def fix_parameter(parameter, ensemble=False):
 
 
 # Collects the best results for each angle and each window
-def create_table_data(filename, model, angles = ["shoulder", "hip", "knee", "elbow"], window_sizes = [128, 256, 512, 1024], ensemble=False):
+def create_table_data(filename, model, angles, window_sizes, ensemble=False):
     table_data = []
     decimals = 3
 
@@ -113,42 +113,21 @@ def convert_table_data_to_table(filename, model, angles, window_sizes, parameter
     return string
 
 
-def create_ensemble_model_tables(filename):
-    model = "<class 'combo.models.detector_comb.SimpleDetectorAggregator'>"
+def create_ensemble_model_tables(filename, models, angles, window_sizes):
     columns = ["Parameter", "Angle", "Window size", "Sensitivity", "Specificity"]
-
-    angles = ["shoulder", "hip", "knee", "elbow"]
-    window_sizes = [128, 256, 512, 1024]
     table = ""
 
-    for angle in angles:
-        caption = "Result from Ensemble for " + angle + "."
-        label = "results_from_ensemble_" + angle
-        table += create_start(columns, ensemble=True) + \
-                convert_table_data_to_table(filename, model, angles=[angle], window_sizes=window_sizes, parameter=True, ensemble=True) + \
-                create_end(caption, label) + "\n\n"
-    to_txt("results_from_ensemble", table)
+    for model in models:
+        for angle in angles:
+            caption = "Result from Ensemble for " + angle + "."
+            label = "results_from_ensemble_" + angle
+            table += create_start(columns, ensemble=True) + \
+                    convert_table_data_to_table(filename, models[model], angles=[angle], window_sizes=window_sizes, parameter=True, ensemble=True) + \
+                    create_end(caption, label) + "\n\n"
+        to_txt("results_from_ensemble", table)
 
 
-def create_base_model_tables(filename, base_models, parameter):
-    if base_models:
-        models = {
-            "KNN": "<class 'pyod.models.knn.KNN'>",
-            "ABOD": "<class 'pyod.models.abod.ABOD'>",
-            "LOF": "<class 'pyod.models.lof.LOF'>",
-            "OCSVM": "<class 'pyod.models.ocsvm.OCSVM'>"
-        }
-
-    else:
-        models = {
-            "KNN": "<class 'pyod.models.knn.KNN'>",
-            "ABOD": "<class 'pyod.models.abod.ABOD'>",
-            "CBLOF": "<class 'pyod.models.cblof.CBLOF'>",
-            "LOF": "<class 'pyod.models.lof.LOF'>",
-            "HBOS": "<class 'pyod.models.hbos.HBOS'>",
-            "OCSVM": "<class 'pyod.models.ocsvm.OCSVM'>"
-        }
-
+def create_base_model_tables(filename, models, angles, window_sizes, parameter):
     if parameter:
         columns = ["Parameter", "Angle", "Window size", "Sensitivity", "Specificity"]
     else:
@@ -164,23 +143,52 @@ def create_base_model_tables(filename, base_models, parameter):
     for model in models:
         caption = f"Result from {model}" + pre_caption
         label = "results_from_" + model + suffix
-        table = create_start(columns) + convert_table_data_to_table(filename, models[model], parameter) + create_end(caption, label)
+        table = create_start(columns) + convert_table_data_to_table(filename, models[model], angles, window_sizes, parameter=parameter, ensemble=False) + create_end(caption, label)
         to_txt(f"results_from_{model}" + suffix, table)
 
 
-def create_table(filename, base_models=False, parameter=False, ensemble=False):
+def create_table(filename, models, angles, window_sizes, parameter=False, ensemble=False):
     if ensemble:
-        create_ensemble_model_tables(filename)
+        create_ensemble_model_tables(filename, models, angles, window_sizes)
     else:
-        create_base_model_tables(filename, base_models, parameter)
+        create_base_model_tables(filename, models, angles, window_sizes, parameter)
 
 
 if __name__ == '__main__':
+    angles = ["shoulder", "hip", "knee", "elbow"]
+    window_sizes = [128, 256, 512, 1024]
+
+    ensemble_model = {
+        "SDA": "<class 'combo.models.detector_comb.SimpleDetectorAggregator'>"
+    }
+    novelty_models = {
+        "LOF_novelty": "<class 'sklearn.neighbors._lof.LocalOutlierFactor'>"
+    }
+    outlier_models = {
+        "all":{
+            "KNN": "<class 'pyod.models.knn.KNN'>",
+            "ABOD": "<class 'pyod.models.abod.ABOD'>",
+            "CBLOF": "<class 'pyod.models.cblof.CBLOF'>",
+            "LOF": "<class 'pyod.models.lof.LOF'>",
+            "HBOS": "<class 'pyod.models.hbos.HBOS'>",
+            "OCSVM": "<class 'pyod.models.ocsvm.OCSVM'>"
+        },
+        "choosen":{
+            "KNN": "<class 'pyod.models.knn.KNN'>",
+            "ABOD": "<class 'pyod.models.abod.ABOD'>",
+            "LOF": "<class 'pyod.models.lof.LOF'>",
+            "OCSVM": "<class 'pyod.models.ocsvm.OCSVM'>"
+        }
+    }
+
     # path_model_search = "C://Users//hloek//Desktop//Master//Kode//anomove//models//results//model_search_results_large_param_search.csv"
-    # create_table(path_model_search, base_models=False, parameter=False, ensemble=False)
+    # create_table(path_model_search, parameter=False, ensemble=False)
     #
     # path_base_models = "C://Users//hloek//Desktop//Master//Kode//anomove//models//results//model_search_kfold_groupBy.csv"
-    # create_table(path_base_models, base_models=True, parameter=True, ensemble=False)
+    # create_table(path_base_models, parameter=True, ensemble=False)
 
-    path_ensemble = "C://Users//hloek//Desktop//Master//Kode//anomove//models//results//ensemble_search_kfold_groupBy.csv"
-    create_table(path_ensemble, ensemble=True)
+    # path_ensemble = "C://Users//hloek//Desktop//Master//Kode//anomove//models//results//ensemble_search_kfold_groupBy.csv"
+    # create_table(path_ensemble, ensemble_model, ensemble=True)
+
+    path_novelty = "..//models//results//novelty_search_groupBy.csv"
+    create_table(path_novelty, novelty_models, angles, window_sizes, parameter=True)
