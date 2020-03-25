@@ -1,5 +1,7 @@
 from combo.models.detector_comb import SimpleDetectorAggregator
 from pyod.models.abod import ABOD
+from pyod.models.cblof import CBLOF
+from pyod.models.hbos import HBOS
 from pyod.models.knn import KNN
 from pyod.models.lof import LOF
 from pyod.models.ocsvm import OCSVM
@@ -147,4 +149,36 @@ def create_abod(min_neighbours, max_neighbours):
             }
         })
     return model_list
+
+
+def create_base_models(models, pca):
+    model_list = []
+    for model in models:
+        if model is OCSVM:
+            element = {
+                "model": model,
+                "supervised": False,
+                "parameters": {}
+            }
+            model_list.append(element)
+        else:
+            if model is CBLOF:
+                parameter = "n_clusters"
+            elif model is HBOS:
+                parameter = "n_bins"
+            else:
+                parameter = "n_neighbors"
+
+            for i in range(1, pca + 1):
+                element = {
+                    "model": model,
+                    "supervised": False,
+                    "parameters": {
+                        parameter: i,
+                    }
+                }
+                model_list.append(element)
+    return model_list
+
+
 
