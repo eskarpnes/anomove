@@ -94,7 +94,7 @@ if __name__ == '__main__':
     minimal_movement = [0.02, 0.04, 0.1]
     pooling = ["max, mean"]
     pca = [0, 5, 10]
-    window_size = [128, 256, 512, 1024]
+    window_sizes = [128, 256, 512, 1024]
     angles = ["shoulder", "hip", "knee", "elbow"]
     drop_parameters = [
         "minimal_movement",
@@ -107,14 +107,68 @@ if __name__ == '__main__':
         "Unnamed: 0.1"
     ]
 
-
     file_path_basis = "results//model_search_kfold.csv"
     file_path_basis_groupBy = "results//model_search_kfold_groupBy.csv"
     file_path_ensemble = "results//ensemble_Search_kfold.csv"
     file_path_ensemble_groupBy = "results//ensemble_Search_kfold_groupBy.csv"
 
-    print_angles(file_path_basis_groupBy, number_of_rows=500, drop_column=drop_parameters, sort_by=["model", "sensitivity"])
+    file_path_tuned = "results//tuned_ensemble_search_kfold.csv"
+    file_path_tuned_groupBy = "results//tuned_ensemble_search_kfold_groupBy.csv"
 
+    file_path_parameter_search = "results//model_search_results_large_param_search.csv"
+
+    file_path_novelty = "results//novelty_search.csv"
+    file_path_novelty_groupBy = "results//novelty_search_groupBy.csv"
+
+    file_path_alle_base_models_kfold = "results//alle_base_models_k_fold_groupBy.csv"
+
+    for model in models:
+        for angle in angles:
+            for window_size in window_sizes:
+                print_results(file_path_alle_base_models_kfold,
+                              number_of_rows=5,
+                              filters=[
+                                  ["model", models[model]],
+                                  ["angle", angle],
+                                  ["window_size", window_size],
+                                  ["minimal_movement", 0.1],
+                                  ["bandwidth", 5],
+                                  ["pooling", "mean"],
+                                  ["sma", 3],
+                                  ["window_overlap", 1],
+                                  ["pca", 10]
+                              ],
+                              drop_column=drop_parameters)
+
+    # print_angles(file_path_ensemble_groupBy, number_of_rows=10, drop_column=drop_parameters)
+
+    # print_results(file_path_novelty_groupBy,
+    #               number_of_rows=5,
+    #               drop_column=drop_parameters)
+
+    # for angle in angles:
+    #     for window_size in window_sizes:
+    #         print_results(file_path_novelty_groupBy,
+    #                       number_of_rows=5,
+    #                       filters=[["window_size", window_size], ["angle", angle]],
+    #                       drop_column=drop_parameters)
+
+            # print_results(file_path_parameter_search,
+            #               number_of_rows=1,
+            #               filters=[
+            #                   ["minimal_movement", 0.1],
+            #                   ["bandwidth", 5],
+            #                   ["pooling", "mean"],
+            #                   ["sma", 3],
+            #                   ["window_overlap", 1],
+            #                   ["pca", 10],
+            #                   ["window_size", window_size],
+            #                   ["angle", angle]
+            #               ],
+            #               drop_column=drop_parameters[0:len(drop_parameters)-1]
+            #               )
+
+    # print_base_estimators_by_id(file_path_ensemble_groupBy, [15])
     # print_angles(file_path_ensemble_groupBy, number_of_rows=5, drop_column=drop_parameters, sort_by=["model", "sensitivity"])
 
     # print_base_estimators_by_id(file_path_ensemble_groupBy, [15, 1615, 3, 1613, 13, 1609, 10, 1610, 3202, 4800, 3200, 8])

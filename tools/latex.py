@@ -21,7 +21,8 @@ def create_start(column_name, ensemble=False):
     start = "\\begin{table}[H] \n" \
              "\t\\centering\n" \
              "\t\\rowcolors{1}{lavender2}{white}\n"
-    begin = "\t\\begin{tabular}{" + begin[0:-1] + "}\n"
+    begin = "\t\\begin{tabular}{" + begin[0:-1] + "}\n" \
+                                                  "\t\t\\rowcolor{lavender1} \n"
     columns = "\t\t" + columns[0:-2] + "\\\\\\hline\n"
 
     return start + begin + columns
@@ -45,7 +46,8 @@ def to_txt(filename, string):
 
 
 def fix_parameter(parameter, ensemble=False):
-    methods = ["KNN", "ABOD", "LOF", "OCSVM"]
+    methods = ["KNN", "ABOD", "LOF", "OCSVM", "HBOS", "CBLOF"]
+    parameter_names = ["n_neighbors", "n_bins", "n_clusters"]
     if ensemble:
         parameter_list = parameter.split(",")
         parameter = ""
@@ -53,15 +55,17 @@ def fix_parameter(parameter, ensemble=False):
             for method in methods:
                 if method in element:
                     parameter += method + ": "
-            if "n_neighbors" in element:
-                parameter_neighbor = [int(s) for s in element.split("=")[1] if s.isdigit()]
-                parameter += "neighbors = " + str(parameter_neighbor[0]) + " \\newline \n\t\t"
+
+            for parameter_name in parameter_names:
+                if parameter_name in element:
+                    parameter_number = [int(s) for s in element.split("=")[1] if s.isdigit()]
+                    parameter += parameter_name.replace("n_", "").capitalize() + " = " + str(parameter_number[0]) + " \\newline \n\t\t"
     else:
         parameter = parameter.replace("{", "")
         parameter = parameter.replace("}", "")
         parameter = parameter.replace("'", "")
         parameter = parameter.replace("n_", "")
-    return parameter
+    return parameter.capitalize()
 
 
 # Collects the best results for each angle and each window
@@ -128,6 +132,7 @@ def create_ensemble_model_tables(filename, models, angles, window_sizes):
 
 
 def create_base_model_tables(filename, models, angles, window_sizes, parameter):
+    table = ""
     if parameter:
         columns = ["Parameter", "Angle", "Window size", "Sensitivity", "Specificity"]
     else:
@@ -141,10 +146,10 @@ def create_base_model_tables(filename, models, angles, window_sizes, parameter):
         pre_caption = "."
 
     for model in models:
-        caption = f"Result from {model}" + pre_caption
+        caption = "Result from " + model.replace("_", " ") + pre_caption
         label = "results_from_" + model + suffix
-        table = create_start(columns) + convert_table_data_to_table(filename, models[model], angles, window_sizes, parameter=parameter, ensemble=False) + create_end(caption, label)
-        to_txt(f"results_from_{model}" + suffix, table)
+        table += create_start(columns) + convert_table_data_to_table(filename, models[model], angles, window_sizes, parameter=parameter, ensemble=False) + create_end(caption, label) + "\n\n"
+    to_txt("results_from_base_models", table)
 
 
 def create_table(filename, models, angles, window_sizes, parameter=False, ensemble=False):
@@ -165,30 +170,30 @@ if __name__ == '__main__':
         "LOF_novelty": "<class 'sklearn.neighbors._lof.LocalOutlierFactor'>"
     }
     outlier_models = {
-        "all":{
-            "KNN": "<class 'pyod.models.knn.KNN'>",
+        "all": {
             "ABOD": "<class 'pyod.models.abod.ABOD'>",
             "CBLOF": "<class 'pyod.models.cblof.CBLOF'>",
-            "LOF": "<class 'pyod.models.lof.LOF'>",
             "HBOS": "<class 'pyod.models.hbos.HBOS'>",
+            "KNN": "<class 'pyod.models.knn.KNN'>",
+            "LOF": "<class 'pyod.models.lof.LOF'>",
             "OCSVM": "<class 'pyod.models.ocsvm.OCSVM'>"
         },
-        "choosen":{
-            "KNN": "<class 'pyod.models.knn.KNN'>",
+        "choosen": {
             "ABOD": "<class 'pyod.models.abod.ABOD'>",
+            "KNN": "<class 'pyod.models.knn.KNN'>",
             "LOF": "<class 'pyod.models.lof.LOF'>",
             "OCSVM": "<class 'pyod.models.ocsvm.OCSVM'>"
         }
     }
 
     # path_model_search = "C://Users//hloek//Desktop//Master//Kode//anomove//models//results//model_search_results_large_param_search.csv"
-    # create_table(path_model_search, parameter=False, ensemble=False)
-    #
-    # path_base_models = "C://Users//hloek//Desktop//Master//Kode//anomove//models//results//model_search_kfold_groupBy.csv"
-    # create_table(path_base_models, parameter=True, ensemble=False)
+    # create_table(path_model_search, outlier_models["all"], angles, window_sizes, parameter=False, ensemble=False)
+
+    file_path_alle_base_models_kfold = "..//models//results//alle_base_models_k_fold_groupBy.csv"
+    create_table(file_path_alle_base_models_kfold, outlier_models["all"], angles, window_sizes, parameter=True, ensemble=False)
 
     # path_ensemble = "C://Users//hloek//Desktop//Master//Kode//anomove//models//results//ensemble_search_kfold_groupBy.csv"
-    # create_table(path_ensemble, ensemble_model, ensemble=True)
+    # create_table(path_ensemble, ensemble_model, angles, window_sizes, ensemble=True)
 
-    path_novelty = "..//models//results//novelty_search_groupBy.csv"
-    create_table(path_novelty, novelty_models, angles, window_sizes, parameter=True)
+    # path_novelty = "..//models//results//novelty_search_groupBy.csv"
+    # create_table(path_novelty, novelty_models, angles, window_sizes, parameter=True)
