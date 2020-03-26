@@ -165,12 +165,18 @@ def create_base_models(models, pca):
         else:
             if model is CBLOF:
                 parameter = "n_clusters"
+                minimum = 5
             elif model is HBOS:
                 parameter = "n_bins"
+                minimum = 2
+            elif model is ABOD:
+                parameter = "n_neighbors"
+                minimum = 2
             else:
                 parameter = "n_neighbors"
+                minimum = 1
 
-            for i in range(1, pca + 1):
+            for i in range(minimum, pca + 1):
                 element = {
                     "model": model,
                     "supervised": False,
@@ -194,3 +200,37 @@ def create_novelty_models(min_neighbours, max_neighbours):
             }
         })
     return model_list
+
+
+# Ha antall av hver model og antall n
+# knn = [2,3,4] her er det 3 knn modeller med naboer 2, 3, og 4. Lag dette for alle modeller.
+def create_ensemble_with_n_models(models):
+    base_estimators = []
+    for key, value in models.items():
+        model = key
+        parameter_numbers = value
+        if model is OCSVM:
+            base_estimators.append(OCSVM())
+        else:
+            for parameter_number in parameter_numbers:
+                if model is ABOD:
+                    base_estimators.append(ABOD(n_neighbors=parameter_number))
+                elif model is KNN:
+                    base_estimators.append(KNN(n_neighbors=parameter_number))
+                elif model is LOF:
+                    base_estimators.append(LOF(n_neighbors=parameter_number))
+                elif model is CBLOF:
+                    base_estimators.append(CBLOF(n_clusters=parameter_number))
+                elif model is HBOS:
+                    base_estimators.append(HBOS(n_bins=parameter_number))
+
+    model = [{
+        "model": SimpleDetectorAggregator,
+        "supervised": False,
+        "parameters": {
+            "method": "average",
+            "base_estimators": base_estimators,
+        }
+        }
+    ]
+    return model

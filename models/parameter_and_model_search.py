@@ -264,18 +264,38 @@ def average_results(file):
 if __name__ == '__main__':
     DATA_PATH = "/home/erlend/datasets"
     window_sizes = [128, 256, 512, 1024]
-    angles = ["shoulder", "elbow", "hip", "knee"]
-    models = [KNN, LOF, ABOD, OCSVM, HBOS, CBLOF]
     pca = 10
+    angles = ["shoulder", "elbow", "hip", "knee"]
+    base_models = [KNN, LOF, ABOD, OCSVM, HBOS, CBLOF]
     knn_neighbors = [5, 9, 10]
     lof_neighbors = [6, 7, 8, 9, 10]
     abod_neighbors = [3, 4, 5, 6]
+    hbos_bins = [3, 5, 7, 8, 9, 10]
+    cblof_cluster = [5, 6, 7, 9, 10]
 
-    models = create_models.create_base_models(models, pca)
-    number_of_models = len(models) * 4 * 4 * 5
-    print("Antall modeller som skal testes: " + str(number_of_models))
-    # freeze_support()
-    # run_search(DATA_PATH, window_sizes, angles, models, result_name="tuned_ensemble_search_kfold")
+    ensemble_models_base = {
+        KNN: knn_neighbors,
+        LOF: lof_neighbors,
+        ABOD: abod_neighbors,
+        OCSVM: []
+    }
+    ensemble_models_base_all = {
+        KNN: knn_neighbors,
+        LOF: lof_neighbors,
+        ABOD: abod_neighbors,
+        OCSVM: [],
+        HBOS: hbos_bins,
+        CBLOF: cblof_cluster
+    }
+    ensemble_model = create_models.create_ensemble_with_n_models(ensemble_models_base)
+    ensemble_model_all = create_models.create_ensemble_with_n_models(ensemble_models_base_all)
+
+    freeze_support()
+    run_search(DATA_PATH, window_sizes, angles, ensemble_model,
+               result_name="ensemble_with_knn_lof_abod_ocsvm_with_kfold")
+    run_search(DATA_PATH, window_sizes, angles, ensemble_model_all,
+               result_name="ensemble_with_knn_lof_abod_hbos_cblof_ocsvm_with_kfold")
+
     # run_search(DATA_PATH, window_sizes, angles, ensemble=False, result_name="model_search_kfold")
     # run_search(DATA_PATH, window_sizes, angles, ensemble=True, result_name="ensemble_search_kfold")
     #average_results("results//novelty_search.csv")
