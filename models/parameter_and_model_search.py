@@ -1,5 +1,13 @@
 import sys
 import gc
+
+from pyod.models.abod import ABOD
+from pyod.models.cblof import CBLOF
+from pyod.models.hbos import HBOS
+from pyod.models.knn import KNN
+from pyod.models.lof import LOF
+from pyod.models.ocsvm import OCSVM
+
 sys.path.append('../')
 import warnings
 
@@ -14,8 +22,7 @@ from sklearn import model_selection, neighbors, metrics
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import KFold
-from models.create_models import get_models, create_tunable_ensemble, create_abod, create_novelty_models
-
+import models.create_models as create_models
 
 
 def get_search_parameter():
@@ -258,12 +265,17 @@ if __name__ == '__main__':
     DATA_PATH = "/home/erlend/datasets"
     window_sizes = [128, 256, 512, 1024]
     angles = ["shoulder", "elbow", "hip", "knee"]
+    models = [KNN, LOF, ABOD, OCSVM, HBOS, CBLOF]
+    pca = 10
     knn_neighbors = [5, 9, 10]
     lof_neighbors = [6, 7, 8, 9, 10]
     abod_neighbors = [3, 4, 5, 6]
-    models = create_tunable_ensemble(knn_neighbors, lof_neighbors, abod_neighbors)
+
+    models = create_models.create_base_models(models, pca)
+    number_of_models = len(models) * 4 * 4 * 5
+    print("Antall modeller som skal testes: " + str(number_of_models))
     # freeze_support()
-    run_search(DATA_PATH, window_sizes, angles, models, result_name="tuned_ensemble_search_kfold")
+    # run_search(DATA_PATH, window_sizes, angles, models, result_name="tuned_ensemble_search_kfold")
     # run_search(DATA_PATH, window_sizes, angles, ensemble=False, result_name="model_search_kfold")
     # run_search(DATA_PATH, window_sizes, angles, ensemble=True, result_name="ensemble_search_kfold")
-    # average_results("results//model_abod_search_kfold.csv")
+    #average_results("results//novelty_search.csv")
