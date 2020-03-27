@@ -225,8 +225,7 @@ def create_ensemble_with_n_models(models):
                     base_estimators.append(CBLOF(n_clusters=parameter_number))
                 elif model is HBOS:
                     base_estimators.append(HBOS(n_bins=parameter_number))
-
-    return [add_ensemble(base_estimators)]
+    return add_ensemble(base_estimators)
 
 
 def create_all_ensemble_methods():
@@ -268,7 +267,7 @@ def add_ensemble(base_estimators):
         "model": SimpleDetectorAggregator,
         "supervised": False,
         "parameters": {
-            "method": "maximum",
+            "method": "maximization",
             "base_estimators": base_estimators,
         }
         }
