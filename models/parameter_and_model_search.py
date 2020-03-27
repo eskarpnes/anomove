@@ -287,15 +287,21 @@ if __name__ == '__main__':
         HBOS: hbos_bins,
         CBLOF: cblof_cluster
     }
-    ensemble_model = create_models.create_ensemble_with_n_models(ensemble_models_base)
-    ensemble_model_all = create_models.create_ensemble_with_n_models(ensemble_models_base_all)
+    # ensemble_model = create_models.create_ensemble_with_n_models(ensemble_models_base)
+    ensemble_model_all = create_models.create_all_ensemble_methods()
 
     freeze_support()
-    run_search(DATA_PATH, window_sizes, angles, ensemble_model,
-               result_name="ensemble_with_knn_lof_abod_ocsvm_with_kfold")
+    # run_search(DATA_PATH, window_sizes, angles, ensemble_model,
+    #            result_name="ensemble_with_knn_lof_abod_ocsvm_with_kfold")
     run_search(DATA_PATH, window_sizes, angles, ensemble_model_all,
-               result_name="ensemble_with_knn_lof_abod_hbos_cblof_ocsvm_with_kfold")
+               result_name="ensemble_every_combination_knn_lof_hbos_ocsvm_abod_with_kfold")
+
+    # e1 = "results//ensemble_with_knn_lof_abod_ocsvm_with_kfold.csv"
+    # e2 = "results//ensemble_with_knn_lof_abod_hbos_cblof_ocsvm_with_kfold.csv"
+    # e1_max = "results//ensemble_with_knn_lof_abod_ocsvm_with_kfold_maximization.csv"
+    # e2_max = "results//ensemble_with_knn_lof_abod_hbos_cblof_ocsvm_with_kfold_maximization.csv"
 
     # run_search(DATA_PATH, window_sizes, angles, ensemble=False, result_name="model_search_kfold")
     # run_search(DATA_PATH, window_sizes, angles, ensemble=True, result_name="ensemble_search_kfold")
-    #average_results("results//novelty_search.csv")
+    # average_results(e1_max)
+    # average_results(e2_max)

@@ -6,6 +6,8 @@ from pyod.models.knn import KNN
 from pyod.models.lof import LOF
 from pyod.models.ocsvm import OCSVM
 from sklearn.neighbors import LocalOutlierFactor
+import itertools
+from pprint import pprint
 
 
 def get_models(ensemble=False, knn_methods=None, ensemble_combinations=None, pca=10, only_LOF=False):
@@ -224,13 +226,50 @@ def create_ensemble_with_n_models(models):
                 elif model is HBOS:
                     base_estimators.append(HBOS(n_bins=parameter_number))
 
-    model = [{
+    return [add_ensemble(base_estimators)]
+
+
+def create_all_ensemble_methods():
+    knn = []
+    knn_neighbors = [5, 9, 10]
+    lof = []
+    lof_neighbors = [6, 7, 8, 9, 10]
+    abod = []
+    abod_neighbors = [3, 4, 5, 6]
+    hbos = []
+    hbos_bins = [3, 5, 7, 8, 9, 10]
+
+    ensemble_methods = []
+    for knn_neighbor in knn_neighbors:
+        knn.append(knn_neighbor)
+        for lof_neighbor in lof_neighbors:
+            lof.append(lof_neighbor)
+            for abod_neighbor in abod_neighbors:
+                abod.append(abod_neighbor)
+                for hbos_bin in hbos_bins:
+                    hbos.append(hbos_bin)
+
+                    ensemble_methods.append(create_ensemble_with_n_models({
+                        KNN: knn,
+                        LOF: lof,
+                        ABOD: abod,
+                        HBOS: hbos,
+                        OCSVM: None
+                    }))
+                hbos = []
+            abod = []
+        lof = []
+
+    return ensemble_methods
+
+
+def add_ensemble(base_estimators):
+    return {
         "model": SimpleDetectorAggregator,
         "supervised": False,
         "parameters": {
-            "method": "average",
+            "method": "maximum",
             "base_estimators": base_estimators,
         }
         }
-    ]
-    return model
+
