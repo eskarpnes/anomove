@@ -20,8 +20,8 @@ def load_infant(data_path):
 def evaluate_infant(infant_id):
     # Get a prediction from an infant on a per frame basis
     predictor = Predictor()
-    predictor.load_model("test_model")
-    infant = predictor.predict("/home/login/datasets/CIMA/data", infant_id)
+    predictor.load_model("ensemble_model")
+    infant = predictor.predict("/home/erlend/datasets/CIMA/data", infant_id)
     visualise_result(infant)
 
 
@@ -34,6 +34,6 @@ def visualise_result(infant, output_path="", video_name="result"):
     )
 
 
-cima = load_validation_set("/home/login/datasets")
+# cima = load_validation_set("/home/erlend/datasets")
 
 evaluate_infant("001")

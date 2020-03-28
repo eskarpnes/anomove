@@ -61,15 +61,14 @@ def lenght_color(length):
     red_val = 255 - length * 3 if length < 85 else 0
     return (0, green_val, red_val)
 
+
 def result_color(result):
-    if result == -1:
-        return (200, 200, 200)
-    elif result == 0:
-        return (60, 220, 60)
-    elif result == 1:
-        return (60, 60, 220)
-    else:
-        return ORANGE
+    if result:
+        green_val = int((1-result) * 255)
+        red_val = int(result * 255)
+        return 0, green_val, red_val
+    return 200, 200, 200
+
 
 def draw_skeleton(frame_number, row, result=None):
     frame = np.full((height, width, 3), 220, np.uint8)
@@ -86,7 +85,7 @@ def draw_skeleton(frame_number, row, result=None):
         frame = cv2.line(frame, origin, coords, ax[1], 2)
 
     for i in range(0, 10):
-        i = i/10
+        i = i / 10
         x_start = (i, 0)
         y_start = (i, 1)
         start = scale_to_pixels(*x_start)
@@ -114,7 +113,7 @@ def draw_skeleton(frame_number, row, result=None):
         except KeyError:
             # Expected, pass
             pass
-        frame = cv2.line(frame, start_coordinates, end_coordinates, (0,0,0), 3)
+        frame = cv2.line(frame, start_coordinates, end_coordinates, (0, 0, 0), 3)
 
     frame_string = str(frame_number)
 
@@ -125,11 +124,10 @@ def draw_skeleton(frame_number, row, result=None):
 
 
 def isometric_projection(x, y, z):
-
     # Rotation around the y axis
     alpha = np.radians(15)
     # Rotation around the z axis
-    beta = np.radians(45+180)
+    beta = np.radians(45 + 180)
 
     rotation_matrix = np.array([
         [1, 0, 0],
@@ -140,7 +138,7 @@ def isometric_projection(x, y, z):
         [0, 1, 0],
         [np.math.sin(beta), 0, np.math.cos(beta)]
     ])
-    c = rotation_matrix @ np.array([y,z,x])
+    c = rotation_matrix @ np.array([y, z, x])
 
     projection = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 0]]) @ c
 
@@ -162,10 +160,12 @@ def get_z_val(row, part):
 
 
 def scale_to_pixels_3d(x, y):
-    return int(x * width) + width//2, int(1-y * height) + height//2
+    return int(x * width) + width // 2, int(1 - y * height) + height // 2
+
 
 def scale_to_pixels(x, y):
     return int(x * width), int(y * height)
+
 
 def draw_skeleton_3d(frame_number, row, result=None):
     frame = np.full((height, width, 3), 220, np.uint8)
@@ -182,7 +182,7 @@ def draw_skeleton_3d(frame_number, row, result=None):
         frame = cv2.line(frame, origin, coords, ax[1], 2)
 
     for i in range(0, 10):
-        i = i/10
+        i = i / 10
         x_start = (i, 0, 0)
         y_start = (i, 1, 0)
         start = scale_to_pixels_3d(*isometric_projection(*x_start))
@@ -193,7 +193,6 @@ def draw_skeleton_3d(frame_number, row, result=None):
         start = scale_to_pixels_3d(*isometric_projection(*x_start))
         end = scale_to_pixels_3d(*isometric_projection(*y_start))
         frame = cv2.line(frame, start, end, (80, 255, 80), 1)
-
 
     for vector in vectors:
         start_x = row[vector[0] + "_x"]
@@ -238,7 +237,7 @@ def animate(dataframe, data_path, video_name):
 def animate_3d(dataframe, data_path, video_name, result=None):
     out_path = os.path.join(data_path, video_name + ".avi")
 
-    out = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*'XVID'), 30.0, (width, height*2))
+    out = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*'XVID'), 30.0, (width, height * 2))
 
     pbar = tqdm(total=len(dataframe))
 
