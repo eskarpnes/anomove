@@ -15,6 +15,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 import shutil
 import os
 import pandas as pd
+import numpy as np
 from tqdm import tqdm
 from multiprocessing import freeze_support, Pool, Manager, cpu_count
 from etl.etl import ETL
@@ -28,7 +29,7 @@ import models.create_models as create_models
 def get_search_parameter():
     parameters = {
         "noise_reduction": ["movement"],
-        "minimal_movement": [0.1],
+        "minimal_movement": [0.02],
         "pooling": ["mean"],
         "sma": [3],
         "bandwidth": [5],
@@ -146,21 +147,22 @@ def run_search(path, window_sizes, angles, models, size=0, result_name="search_r
             os.mkdir("tmp")
 
         for window_size in window_sizes:
-            for angle in angles:
-                with Manager() as manager:
-                    synced_results = manager.list()
 
+            with Manager() as manager:
+                pool = Pool()
+                synced_results = manager.list()
+                for angle in angles:
                     right_fourier_path = os.path.join(DATA_PATH, str(window_size), "right_" + angle + ".json")
                     left_fourier_path = os.path.join(DATA_PATH, str(window_size), "left_" + angle + ".json")
 
                     right_df = pd.read_json(right_fourier_path)
                     left_df = pd.read_json(left_fourier_path)
-                    df = right_df.append(left_df)
+                    df = right_df.append(left_df)# .sample(n=100000, random_state=42)
                     df.reset_index(drop=True, inplace=True)
                     df_features = pd.DataFrame(df.data.tolist())
 
                     for batch in chunkify(models, 1):
-                        pool = Pool()
+
 
                         if params["pca"] != 0:
                             pca = PCA(n_components=params["pca"])
@@ -183,35 +185,36 @@ def run_search(path, window_sizes, angles, models, size=0, result_name="search_r
 
                             model_data = x_train, x_test, y_train, y_test
                             for model in batch:
+                                # pool = Pool()
                                 pool.apply_async(async_model_testing, args=(model_data, model, synced_results, angle,),
                                                  callback=update_progress)
 
-                        pool.close()
-                        pool.join()
+                pool.close()
+                pool.join()
 
 
-                    print("\nCheckpoint created.")
-                    results = []
-                    for result in synced_results:
-                        results.append({
-                            "model": result["model"],
-                            "model_parameter": result["parameters"],
-                            "noise_reduction": params["noise_reduction"],
-                            "minimal_movement": params["minimal_movement"],
-                            "bandwidth": params["bandwidth"],
-                            "pooling": params["pooling"],
-                            "sma": params["sma"],
-                            "window_overlap": params["window_overlap"],
-                            "pca": params["pca"],
-                            "window_size": str(window_size),
-                            "angle": result["angle"],
-                            "sensitivity": result["sensitivity"],
-                            "specificity": result["specificity"]
-                        })
-                    results = pd.DataFrame(results)
-                    result_path = os.path.join("tmp", f"{result_name}_{str(window_size)}_{angle}.csv")
-                    results.to_csv(result_path)
-                    del results
+                print("\nCheckpoint created.")
+                results = []
+                for result in synced_results:
+                    results.append({
+                        "model": result["model"],
+                        # "model_parameter": result["parameters"],
+                        "noise_reduction": params["noise_reduction"],
+                        "minimal_movement": params["minimal_movement"],
+                        "bandwidth": params["bandwidth"],
+                        "pooling": params["pooling"],
+                        "sma": params["sma"],
+                        "window_overlap": params["window_overlap"],
+                        "pca": params["pca"],
+                        "window_size": str(window_size),
+                        "angle": result["angle"],
+                        "sensitivity": result["sensitivity"],
+                        "specificity": result["specificity"]
+                    })
+                results = pd.DataFrame(results)
+                result_path = os.path.join("tmp", f"{result_name}_{str(window_size)}_{angle}.csv")
+                results.to_csv(result_path)
+                del results
                 gc.collect()
 
     final_results = pd.DataFrame()
@@ -219,7 +222,7 @@ def run_search(path, window_sizes, angles, models, size=0, result_name="search_r
         sub_results = pd.read_csv(f"tmp/{filename}")
         final_results = final_results.append(sub_results)
     final_results.to_csv(f"{result_name}.csv")
-    shutil.rmtree("tmp")
+    # shutil.rmtree("tmp")
     pbar.close()
 
 
@@ -260,22 +263,33 @@ def average_results(file):
     ]).mean().reset_index()
     results.to_csv(file[0:-4] + "_groupBy.csv")
 
+def construct_model():
+    import itertools
+    from pyod.models.lof import LOF
+    from pyod.models.knn import KNN
+    from pyod.models.ocsvm import OCSVM
+    from pyod.models.abod import ABOD
+    from combo.models.detector_lscp import LSCP
+    model = {
+        "model": LSCP,
+        "supervised": False,
+        "parameters": {
+            "base_estimators":
+                list(itertools.chain.from_iterable([(LOF(n_neighbors=i, contamination=0.05), KNN(n_neighbors=i, contamination=0.05), ABOD(n_neighbors=i, contamination=0.05)) for i in np.random.choice(range(5, 200), 20)])),
+            "local_region_size": 100,
+            "contamination": 0.05,
+            "n_bins": 10,
+            "random_state": 42
+        }
+    }
+    return [model]
 
 if __name__ == '__main__':
     DATA_PATH = "/home/erlend/datasets"
     window_sizes = [128, 256, 512, 1024]
     angles = ["shoulder", "elbow", "hip", "knee"]
-    models = [KNN, LOF, ABOD, OCSVM, HBOS, CBLOF]
-    pca = 10
-    knn_neighbors = [5, 9, 10]
-    lof_neighbors = [6, 7, 8, 9, 10]
-    abod_neighbors = [3, 4, 5, 6]
+    models = construct_model()
 
-    models = create_models.create_base_models(models, pca)
-    number_of_models = len(models) * 4 * 4 * 5
-    print("Antall modeller som skal testes: " + str(number_of_models))
     # freeze_support()
-    # run_search(DATA_PATH, window_sizes, angles, models, result_name="tuned_ensemble_search_kfold")
-    # run_search(DATA_PATH, window_sizes, angles, ensemble=False, result_name="model_search_kfold")
-    # run_search(DATA_PATH, window_sizes, angles, ensemble=True, result_name="ensemble_search_kfold")
+    run_search(DATA_PATH, window_sizes, angles, models, result_name="lscp_kfold")
     #average_results("results//novelty_search.csv")

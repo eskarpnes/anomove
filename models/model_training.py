@@ -5,7 +5,7 @@ from pyod.models.lof import LOF
 from pyod.models.abod import ABOD
 from pyod.models.knn import KNN
 from pyod.models.ocsvm import OCSVM
-from combo.models.detector_comb import SimpleDetectorAggregator
+from combo.models.detector_lscp import LSCP
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 import sys
@@ -24,7 +24,7 @@ def load_data(dataset):
             pooling="mean",
             sma_window=3,
             bandwidth=5,
-            minimal_movement=0.05
+            minimal_movement=0.02
         )
     etl.load(dataset)
     etl.preprocess_pooled()
@@ -33,20 +33,20 @@ def load_data(dataset):
 
 def construct_model():
     classifiers = [
-        LOF(n_neighbors=1),
-        LOF(n_neighbors=3),
         LOF(n_neighbors=5),
-        LOF(n_neighbors=7),
-        LOF(n_neighbors=8),
-        LOF(n_neighbors=9),
-        LOF(n_neighbors=10),
         ABOD(n_neighbors=5),
         KNN(n_neighbors=5),
+        LOF(n_neighbors=10),
+        ABOD(n_neighbors=10),
+        KNN(n_neighbors=10),
+        LOF(n_neighbors=15),
+        ABOD(n_neighbors=15),
+        KNN(n_neighbors=15),
         OCSVM()
     ]
-    model = SimpleDetectorAggregator(
+    model = LSCP(
         classifiers,
-        method="average"
+        local_region_size=200
     )
     return model
 
@@ -58,7 +58,7 @@ def train_model(model_name):
     models = {}
     for window_size in window_sizes:
         scaler = StandardScaler()
-        pca = PCA(n_components=10)
+        pca = PCA(n_components=5)
         X = pd.DataFrame()
         for angle in angles:
             fourier_path = os.path.join(DATA_PATH, str(window_size), angle + ".json")
@@ -86,4 +86,4 @@ def train_model(model_name):
 
 if __name__ == "__main__":
     load_data("CIMA")
-    train_model("ensemble_model_low_movement")
+    train_model("lscp")
