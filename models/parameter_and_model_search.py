@@ -73,7 +73,9 @@ def model_testing(data, model):
     else:
         specificity = tn / (tn + fp)
 
-    return sensitivity, specificity
+    roc_auc = metrics.roc_auc_score(y_test, y_test_pred)
+
+    return sensitivity, specificity, roc_auc
 
 
 def chunkify(large_list, chunk_size):
@@ -209,7 +211,8 @@ def run_search(path, window_sizes, angles, models, size=0, result_name="search_r
                         "window_size": str(window_size),
                         "angle": result["angle"],
                         "sensitivity": result["sensitivity"],
-                        "specificity": result["specificity"]
+                        "specificity": result["specificity"],
+                        "roc_auc": result["roc_auc"]
                     })
                 results = pd.DataFrame(results)
                 result_path = os.path.join("tmp", f"{result_name}_{str(window_size)}_{angle}.csv")
@@ -229,7 +232,7 @@ def run_search(path, window_sizes, angles, models, size=0, result_name="search_r
 def async_model_testing(model_data, model, synced_result, angle):
     try:
         # print(f"Started fitting {model['model']}")
-        sensitivity, specificity = model_testing(model_data, model)
+        sensitivity, specificity, roc_auc = model_testing(model_data, model)
     except Exception as e:
         print("Unexpected error:", sys.exc_info()[0])
         print(e)
@@ -241,7 +244,8 @@ def async_model_testing(model_data, model, synced_result, angle):
         "parameters": model["parameters"],
         "angle": angle,
         "sensitivity": sensitivity,
-        "specificity": specificity
+        "specificity": specificity,
+        "roc_auc": roc_auc
     })
 
 
