@@ -76,6 +76,7 @@ class ETL:
         self.random_seed = random_seed
         self.size = size
         self.sma_window = sma_window
+        self.cache_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache")
         self.angles = {
             "right_elbow": ["right_shoulder", "right_elbow", "right_wrist"],
             "left_elbow": ["left_shoulder", "left_elbow", "left_wrist"],
@@ -102,7 +103,7 @@ class ETL:
         self.validation = validation
 
         self.cima_id = f"{'validation' if validation else 'data'}{'_' + str(self.size) if self.size != 0 else ''}_{self.sma_window}"
-        save_path = os.path.join("cache", self.cima_id)
+        save_path = os.path.join(self.cache_path, self.cima_id)
 
         if os.path.exists(save_path):
             with open(save_path, "rb") as f:
@@ -192,7 +193,7 @@ class ETL:
     def preprocess_pooled(self, batch_size=cpu_count()):
 
         if self.cache:
-            save_path = os.path.join("cache", self.cima_id)
+            save_path = os.path.join(self.cache_path, self.cima_id)
 
             if os.path.exists(save_path):
                 print("Using cached preprocessed dataset")
@@ -227,8 +228,8 @@ class ETL:
 
         shutil.rmtree("tmp")
 
-        if not os.path.exists("cache"):
-            os.mkdir("cache")
+        if not os.path.exists(self.cache_path):
+            os.mkdir(self.cache_path)
 
         with open(save_path, "wb") as f:
             pickle.dump(self.cima, f)
@@ -432,7 +433,7 @@ class ETL:
 
 
 if __name__ == "__main__":
-    etl = ETL("/home/erlend/datasets", [128, 256, 512, 1024], size=100)
+    etl = ETL("/home/erlend/datasets", [128, 256, 512, 1024], size=16)
     etl.load("CIMA")
     etl.preprocess_pooled()
     etl.generate_fourier_dataset(window_overlap=1)
