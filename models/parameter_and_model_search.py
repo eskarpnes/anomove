@@ -22,13 +22,14 @@ from sklearn import model_selection, neighbors, metrics
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import KFold
+from pyod.models.xgbod import XGBOD
 import models.create_models as create_models
 
 
 def get_search_parameter():
     parameters = {
         "noise_reduction": ["movement"],
-        "minimal_movement": [0.1],
+        "minimal_movement": [0.5],
         "pooling": ["mean"],
         "sma": [3],
         "bandwidth": [5],
@@ -72,7 +73,9 @@ def model_testing(data, model):
     else:
         specificity = tn / (tn + fp)
 
-    return sensitivity, specificity
+    roc_auc = metrics.roc_auc_score(y_test, y_test_pred)
+
+    return sensitivity, specificity, roc_auc
 
 
 def chunkify(large_list, chunk_size):
@@ -107,12 +110,6 @@ def run_search(path, window_sizes, angles, models, size=0, result_name="search_r
 
         params_series = pd.Series(params)
         params_keys = list(params.keys())
-        in_results = (results[params_keys] == params_series).all(axis=1).sum()
-        if in_results:
-            # Parameters has already been ran.
-            print("Already done this combination, skipping...\n")
-            pbar.update()
-            continue
 
         if params["pca"] == 0 and params["bandwidth"] == 0:
             # No dimension reduction, too many dimensions.
@@ -140,7 +137,7 @@ def run_search(path, window_sizes, angles, models, size=0, result_name="search_r
         print("\nPreprocessing data.")
         etl.preprocess_pooled()
         print("\nGenerating fourier data.")
-        # etl.generate_fourier_dataset(window_overlap=params["window_overlap"])
+        etl.generate_fourier_dataset(window_overlap=params["window_overlap"])
 
         if not os.path.exists("tmp"):
             os.mkdir("tmp")
@@ -159,7 +156,7 @@ def run_search(path, window_sizes, angles, models, size=0, result_name="search_r
                     df.reset_index(drop=True, inplace=True)
                     df_features = pd.DataFrame(df.data.tolist())
 
-                    for batch in chunkify(models, 1):
+                    for batch in chunkify(models, 5):
                         pool = Pool()
 
                         if params["pca"] != 0:
@@ -206,10 +203,11 @@ def run_search(path, window_sizes, angles, models, size=0, result_name="search_r
                             "window_size": str(window_size),
                             "angle": result["angle"],
                             "sensitivity": result["sensitivity"],
-                            "specificity": result["specificity"]
+                            "specificity": result["specificity"],
+                            "roc_auc": result["roc_auc"]
                         })
                     results = pd.DataFrame(results)
-                    result_path = os.path.join("tmp", f"{result_name}_{str(window_size)}_{angle}.csv")
+                    result_path = os.path.join("tmp", f"{result_name}_{str(window_size)}_{angle}_{i}.csv")
                     results.to_csv(result_path)
                     del results
                 gc.collect()
@@ -226,7 +224,7 @@ def run_search(path, window_sizes, angles, models, size=0, result_name="search_r
 def async_model_testing(model_data, model, synced_result, angle):
     try:
         # print(f"Started fitting {model['model']}")
-        sensitivity, specificity = model_testing(model_data, model)
+        sensitivity, specificity, roc_auc = model_testing(model_data, model)
     except Exception as e:
         print("Unexpected error:", sys.exc_info()[0])
         print(e)
@@ -238,7 +236,8 @@ def async_model_testing(model_data, model, synced_result, angle):
         "parameters": model["parameters"],
         "angle": angle,
         "sensitivity": sensitivity,
-        "specificity": specificity
+        "specificity": specificity,
+        "roc_auc": roc_auc
     })
 
 
@@ -261,21 +260,107 @@ def average_results(file):
     results.to_csv(file[0:-4] + "_groupBy.csv")
 
 
+def construct_base_estimators():
+    from pyod.models.knn import KNN
+    from pyod.models.lof import LOF
+    from pyod.models.hbos import HBOS
+    from pyod.models.iforest import IForest
+    from pyod.models.ocsvm import OCSVM
+
+    estimator_list = []
+
+    # predefined range of n_neighbors for KNN, AvgKNN, and LOF
+    k_range = [1, 3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+
+    # validate the value of k
+    k_range = [k for k in k_range]
+
+    for k in k_range:
+        estimator_list.append({
+            "model": KNN,
+            "supervised": False,
+            "parameters": {
+                "n_neighbors": k,
+                "method": 'largest',
+                "contamination": 0.05
+            }
+        })
+        estimator_list.append({
+            "model": KNN,
+            "supervised": False,
+            "parameters": {
+                "n_neighbors": k,
+                "method": 'mean',
+                "contamination": 0.05
+            }
+        })
+        estimator_list.append({
+            "model": LOF,
+            "supervised": False,
+            "parameters": {
+                "n_neighbors": k,
+                "contamination": 0.05
+            }
+        })
+
+    n_bins_range = [3, 5, 7, 9, 12, 15, 20, 25, 30, 50]
+    for n_bins in n_bins_range:
+        estimator_list.append({
+            "model": HBOS,
+            "supervised": False,
+            "parameters": {
+                "n_bins": n_bins,
+                "contamination": 0.05
+            }
+        })
+
+    # predefined range of nu for one-class svm
+    nu_range = [0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99]
+    for nu in nu_range:
+        estimator_list.append({
+            "model": OCSVM,
+            "supervised": False,
+            "parameters": {
+                "nu": nu,
+                "contamination": 0.05
+            }
+        })
+
+    # predefined range for number of estimators in isolation forests
+    n_range = [10, 20, 50, 70, 100, 150, 200, 250]
+    for n in n_range:
+        estimator_list.append({
+            "model": IForest,
+            "supervised": False,
+            "parameters": {
+                "n_estimators": n,
+                "random_state": 42,
+                "contamination": 0.05
+            }
+        })
+
+    return estimator_list
+
+def construct_xgbod():
+
+    model = {
+            "model": XGBOD,
+            "supervised": True,
+            "parameters": {
+                "silent": False,
+                "n_jobs": 6
+            }
+    }
+    return [model]
+
 if __name__ == '__main__':
     DATA_PATH = "/home/erlend/datasets"
     window_sizes = [128, 256, 512, 1024]
     angles = ["shoulder", "elbow", "hip", "knee"]
-    models = [KNN, LOF, ABOD, OCSVM, HBOS, CBLOF]
-    pca = 10
-    knn_neighbors = [5, 9, 10]
-    lof_neighbors = [6, 7, 8, 9, 10]
-    abod_neighbors = [3, 4, 5, 6]
+    models = construct_xgbod()
 
-    models = create_models.create_base_models(models, pca)
-    number_of_models = len(models) * 4 * 4 * 5
-    print("Antall modeller som skal testes: " + str(number_of_models))
-    # freeze_support()
-    # run_search(DATA_PATH, window_sizes, angles, models, result_name="tuned_ensemble_search_kfold")
+    run_search(DATA_PATH, window_sizes, angles, models, result_name="xgbod")
     # run_search(DATA_PATH, window_sizes, angles, ensemble=False, result_name="model_search_kfold")
     # run_search(DATA_PATH, window_sizes, angles, ensemble=True, result_name="ensemble_search_kfold")
-    #average_results("results//novelty_search.csv")
+    average_results("xgbod.csv")
+
