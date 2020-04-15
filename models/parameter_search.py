@@ -30,7 +30,7 @@ import models.create_models as create_models
 def get_search_parameter():
     parameters = {
         "noise_reduction": ["movement"],
-        "minimal_movement": [0.5],
+        "minimal_movement": [0.25, 0.5, 0.75, 1.0],
         "pooling": ["mean"],
         "sma": [3],
         "bandwidth": [0],
@@ -84,11 +84,9 @@ def chunkify(large_list, chunk_size):
         yield large_list[i:i + chunk_size]
 
 
-def run_search(path, window_sizes, angles, models, size=0, result_name="search_results", novelty=False):
+def run_search(path, window_sizes, angles, models, size=0, result_name="search_results", novelty=False, kfold_splits=5):
     DATA_PATH = path
     grid = model_selection.ParameterGrid(get_search_parameter())
-    kfold_splits = 5
-    kf = KFold(n_splits=kfold_splits)
 
     if os.path.exists("model_search_results.csv"):
         results = pd.read_csv("model_search_results.csv", index_col=0)
@@ -99,40 +97,18 @@ def run_search(path, window_sizes, angles, models, size=0, result_name="search_r
                      "sensitivity", "specificity"]
         )
 
+    if not os.path.exists("tmp"):
+        os.mkdir("tmp")
+
     for i, params in enumerate(grid):
+
+
+        if skippable_params(params):
+            continue
 
         print(f"Running with params: \n{params}")
 
-        params_series = pd.Series(params)
-        params_keys = list(params.keys())
-
-        if params["pls"] == 0 and params["bandwidth"] == 0:
-            # No dimension reduction, too many dimensions.
-            print("No dimension reduction, skipping...\n")
-            pbar.update()
-            continue
-
-        if params["bandwidth"] == 0 and params["pooling"] == "max":
-            # Pooling is dependent on bandwidth, so no bandwidth = no pooling. Remove one choice in pooling to reduce it to 1.
-            print("Invalid combination, skipping...\n")
-            pbar.update()
-            continue
-
-        etl = ETL(
-            data_path=DATA_PATH,
-            window_sizes=window_sizes,
-            bandwidth=params["bandwidth"],
-            pooling=params["pooling"],
-            sma_window=params["sma"],
-            noise_reduction=params["noise_reduction"],
-            minimal_movement=params["minimal_movement"],
-            size=size
-        )
-        etl.load("CIMA")
-        print("\nPreprocessing data.")
-        etl.preprocess_pooled()
-        print("\nGenerating fourier data.")
-        etl.generate_fourier_dataset(window_overlap=params["window_overlap"])
+        generate_fourier(DATA_PATH, window_sizes, size, params)
 
         print(f"The number of methods without k-folding are: {str(len(models))}")
         pbar = tqdm(total=len(models) * len(window_sizes) * len(angles) * kfold_splits)
@@ -140,88 +116,137 @@ def run_search(path, window_sizes, angles, models, size=0, result_name="search_r
         def update_progress(*a):
             pbar.update()
 
-        if not os.path.exists("tmp"):
-            os.mkdir("tmp")
+        for window_size, angle in iterate_angles():
+            with Manager() as manager:
+                synced_results = manager.list()
 
-        for window_size in window_sizes:
-            for angle in angles:
-                with Manager() as manager:
-                    synced_results = manager.list()
+                data, labels = load_fourier_angle(window_size, angle)
 
-                    right_fourier_path = os.path.join(DATA_PATH, str(window_size), "right_" + angle + ".json")
-                    left_fourier_path = os.path.join(DATA_PATH, str(window_size), "left_" + angle + ".json")
+                for batch in chunkify(models, 20):
+                    pool = Pool()
 
-                    right_df = pd.read_json(right_fourier_path)
-                    left_df = pd.read_json(left_fourier_path)
-                    df = right_df.append(left_df)
-                    df.reset_index(drop=True, inplace=True)
-                    df_features = pd.DataFrame(df.data.tolist())
+                    kfold_parameters = {
+                        "batch": batch,
+                        "pool": pool,
+                        "angle": angle,
+                        "splits": kfold_splits,
+                        "pls_components": params["pls"],
+                        "novelty": novelty
+                    }
 
-                    for batch in chunkify(models, 20):
-                        pool = Pool()
+                    async_kfold(data, labels, kfold_parameters, synced_results, update_progress)
 
+                    pool.close()
+                    pool.join()
 
-                        data = df_features
-                        labels = df["label"]
+                print("\nCheckpoint created.")
+                checkpoint_name = f"{result_name.split('/')[-1]}_{str(window_size)}_{angle}_{i}.csv"
+                dump_results(params, synced_results, window_size, checkpoint_name)
+        pbar.close()
+    save_and_clean(result_name)
 
-                        for train_index, test_index in kf.split(data):
-                            x_train = data.iloc[train_index]
-                            y_train = labels[train_index]
-                            if novelty:
-                                x_train = x_train.loc[y_train == 0]
-                                y_train = y_train.loc[y_train == 0]
-                            x_test = data.iloc[test_index]
-                            y_test = labels[test_index]
+def generate_fourier(data_path, window_sizes, size, params):
+    etl = ETL(
+        data_path=data_path,
+        window_sizes=window_sizes,
+        bandwidth=params["bandwidth"],
+        pooling=params["pooling"],
+        sma_window=params["sma"],
+        noise_reduction=params["noise_reduction"],
+        minimal_movement=params["minimal_movement"],
+        size=size
+    )
+    etl.load("CIMA")
+    print("\nPreprocessing data.")
+    etl.preprocess_pooled()
+    print("\nGenerating fourier data.")
+    etl.generate_fourier_dataset(window_overlap=params["window_overlap"])
 
-                            if params["pls"] != 0:
-                                pls = PLSRegression(n_components=params["pls"])
-                                pls.fit(x_train, y_train)
-                                x_train = pls.transform(x_train)
-                                x_test = pls.transform(x_test)
+def skippable_params(params):
+    if params["pls"] == 0 and params["bandwidth"] == 0:
+        # No dimension reduction, too many dimensions.
+        print("No dimension reduction, skipping...\n")
+        pbar.update()
+        return true
 
+    if params["bandwidth"] == 0 and params["pooling"] == "max":
+        # Pooling is dependent on bandwidth, so no bandwidth = no pooling. Remove one choice in pooling to reduce it to 1.
+        print("Invalid combination, skipping...\n")
+        pbar.update()
+        return true
 
-                            model_data = x_train, x_test, y_train, y_test
-                            for model in batch:
-                                pool.apply_async(async_model_testing, args=(model_data, model, synced_results, angle,),
-                                                 callback=update_progress)
-
-                        pool.close()
-                        pool.join()
-
-
-                    print("\nCheckpoint created.")
-                    results = []
-                    for result in synced_results:
-                        results.append({
-                            "model": result["model"],
-                            "model_parameter": result["parameters"],
-                            "noise_reduction": params["noise_reduction"],
-                            "minimal_movement": params["minimal_movement"],
-                            "bandwidth": params["bandwidth"],
-                            "pooling": params["pooling"],
-                            "sma": params["sma"],
-                            "window_overlap": params["window_overlap"],
-                            "pls": params["pls"],
-                            "window_size": str(window_size),
-                            "angle": result["angle"],
-                            "sensitivity": result["sensitivity"],
-                            "specificity": result["specificity"],
-                            "roc_auc": result["roc_auc"]
-                        })
-                    results = pd.DataFrame(results)
-                    result_path = os.path.join("tmp", f"{result_name.split('/')[-1]}_{str(window_size)}_{angle}_{i}.csv")
-                    results.to_csv(result_path)
-                    del results
-                gc.collect()
-
+def save_and_clean(result_name):
     final_results = pd.DataFrame()
     for filename in os.listdir("tmp"):
         sub_results = pd.read_csv(f"tmp/{filename}")
         final_results = final_results.append(sub_results)
-    final_results.to_csv(f"{result_name}.csv")
+    final_results.to_csv(f"{result_name}.csv", index=False)
     shutil.rmtree("tmp")
-    pbar.close()
 
+def iterate_angles():
+    for window_size in window_sizes:
+        for angle in angles:
+            yield window_size, angle
+
+def load_fourier_angle(window_size, angle):
+    right_fourier_path = os.path.join(DATA_PATH, str(window_size), "right_" + angle + ".json")
+    left_fourier_path = os.path.join(DATA_PATH, str(window_size), "left_" + angle + ".json")
+
+    right_df = pd.read_json(right_fourier_path)
+    left_df = pd.read_json(left_fourier_path)
+    df = right_df.append(left_df)
+    df.reset_index(drop=True, inplace=True)
+
+    data = pd.DataFrame(df.data.tolist())
+    labels = df["label"]
+
+    return data, labels
+
+
+def dump_results(params, synced_results, window_size, path):
+    results = []
+    for result in synced_results:
+        results.append({
+            "model": result["model"],
+            "model_parameter": result["parameters"],
+            "noise_reduction": params["noise_reduction"],
+            "minimal_movement": params["minimal_movement"],
+            "bandwidth": params["bandwidth"],
+            "pooling": params["pooling"],
+            "sma": params["sma"],
+            "window_overlap": params["window_overlap"],
+            "pls": params["pls"],
+            "window_size": str(window_size),
+            "angle": result["angle"],
+            "sensitivity": result["sensitivity"],
+            "specificity": result["specificity"],
+            "roc_auc": result["roc_auc"]
+        })
+    results = pd.DataFrame(results)
+    result_path = os.path.join("tmp", path)
+    results.to_csv(result_path)
+
+def async_kfold(X, y, parameters, synced_results, callback):
+    kf = KFold(n_splits=parameters["splits"])
+    for train_index, test_index in kf.split(X):
+        x_train = X.iloc[train_index]
+        y_train = y[train_index]
+        if parameters["novelty"]:
+            x_train = x_train.loc[y_train == 0]
+            y_train = y_train.loc[y_train == 0]
+        x_test = X.iloc[test_index]
+        y_test = y[test_index]
+
+        if parameters["pls_components"] != 0:
+            pls = PLSRegression(n_components=parameters["pls_components"])
+            pls.fit(x_train, y_train)
+            x_train = pls.transform(x_train)
+            x_test = pls.transform(x_test)
+
+        model_data = x_train, x_test, y_train, y_test
+        for model in parameters["batch"]:
+            parameters["pool"].apply_async(async_model_testing, args=(model_data, model, synced_results, parameters["angle"],),
+                             callback=callback)
 
 def async_model_testing(model_data, model, synced_result, angle):
     try:
@@ -359,11 +384,11 @@ if __name__ == '__main__':
     DATA_PATH = "/home/erlend/datasets"
     window_sizes = [128, 256, 512, 1024]
     angles = ["shoulder", "elbow", "hip", "knee"]
-    models = construct_base_estimators()
+    models = construct_xgbod()
 
-    run_search(DATA_PATH, window_sizes, angles, models, result_name="results/base_estimators")
+    run_search(DATA_PATH, window_sizes, angles, models, result_name="results/xgbod")
 
-    average_results("results/base_estimators.csv")
+    average_results("results/xgbod.csv")
 
     from analyse_results import print_results
-    print_results("results/base_estimators_groupBy.csv", sort_by=["roc_auc"])
+    print_results("results/xgbod.csv", sort_by=["roc_auc"])
