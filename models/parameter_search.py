@@ -15,6 +15,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 import shutil
 import os
 import pandas as pd
+import numpy as np
 from tqdm import tqdm
 from multiprocessing import freeze_support, Pool, Manager, cpu_count
 from etl.etl import ETL
@@ -30,7 +31,7 @@ import models.create_models as create_models
 def get_search_parameter():
     parameters = {
         "noise_reduction": ["movement"],
-        "minimal_movement": [0.25, 0.5, 0.75, 1.0],
+        "minimal_movement": [0.75],
         "pooling": ["mean"],
         "sma": [3],
         "bandwidth": [0],
@@ -380,15 +381,41 @@ def construct_xgbod():
     }
     return [model]
 
+def construct_lscp():
+    import itertools
+    from pyod.models.lof import LOF
+    from pyod.models.knn import KNN
+    from pyod.models.ocsvm import OCSVM
+    from pyod.models.abod import ABOD
+    from combo.models.detector_lscp import LSCP
+    model = {
+        "model": LSCP,
+        "supervised": False,
+        "parameters": {
+            "base_estimators":
+                list(itertools.chain.from_iterable(
+                    [(LOF(n_neighbors=k, contamination=0.05),
+                      KNN(n_neighbors=k, contamination=0.05),
+                      ABOD(n_neighbors=k, contamination=0.05))
+                     for k in [1, 3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]])),
+            "local_region_size": 100,
+            "contamination": 0.05,
+            "n_bins": 10,
+            "random_state": 42
+        }
+    }
+    return [model]
+
 if __name__ == '__main__':
+
     DATA_PATH = "/home/erlend/datasets"
     window_sizes = [128, 256, 512, 1024]
     angles = ["shoulder", "elbow", "hip", "knee"]
-    models = construct_xgbod()
+    models = construct_lscp()
 
-    run_search(DATA_PATH, window_sizes, angles, models, result_name="results/xgbod")
+    run_search(DATA_PATH, window_sizes, angles, models, result_name="results/lscp")
 
-    average_results("results/xgbod.csv")
+    average_results("results/lscp.csv")
 
     from analyse_results import print_results
-    print_results("results/xgbod.csv", sort_by=["roc_auc"])
+    print_results("results/lscp.csv", sort_by=["roc_auc"])
