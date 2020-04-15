@@ -76,6 +76,7 @@ class ETL:
         self.random_seed = random_seed
         self.size = size
         self.sma_window = sma_window
+        self.cache_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache")
         self.angles = {
             "right_elbow": ["right_shoulder", "right_elbow", "right_wrist"],
             "left_elbow": ["left_shoulder", "left_elbow", "left_wrist"],
@@ -102,7 +103,7 @@ class ETL:
         self.validation = validation
 
         self.cima_id = f"{'validation' if validation else 'data'}{'_' + str(self.size) if self.size != 0 else ''}_{self.sma_window}"
-        save_path = os.path.join("cache", self.cima_id)
+        save_path = os.path.join(self.cache_path, self.cima_id)
 
         if os.path.exists(save_path):
             with open(save_path, "rb") as f:
@@ -192,17 +193,16 @@ class ETL:
     def preprocess_pooled(self, batch_size=cpu_count()):
 
         if self.cache:
-            save_path = os.path.join("cache", self.cima_id)
+            save_path = os.path.join(self.cache_path, self.cima_id)
 
             if os.path.exists(save_path):
                 print("Using cached preprocessed dataset")
                 return
 
-        # pbar = tqdm(total=int(np.ceil(len(self.cima) / batch_size)))
+        pbar = tqdm(total=int(np.ceil(len(self.cima) / batch_size)))
 
         def update_progress(*a):
-           #pbar.update()
-            pass
+            pbar.update()
 
         if os.path.exists("tmp"):
             shutil.rmtree("tmp")
@@ -219,7 +219,7 @@ class ETL:
             pool.join()
             update_progress()
 
-        # pbar.close()
+        pbar.close()
 
         for key in os.listdir("tmp"):
             path = os.path.join("tmp", key)
@@ -228,12 +228,11 @@ class ETL:
 
         shutil.rmtree("tmp")
 
-        if self.cache:
-            if not os.path.exists("cache"):
-                os.mkdir("cache")
+        if not os.path.exists(self.cache_path):
+            os.mkdir(self.cache_path)
 
-            with open(save_path, "wb") as f:
-                pickle.dump(self.cima, f)
+        with open(save_path, "wb") as f:
+            pickle.dump(self.cima, f)
 
 
 
@@ -246,13 +245,11 @@ class ETL:
         data = item["data"]
         data = self.remove_outliers(data, 0.1)
         data = self.smooth_sma(data, self.sma_window)
-        # data = self.create_angles(data)
         z_data = self.extrapolate_z_axis(data)
         angle_data = self.create_angles(data, z_data)
         item["data"] = data
         item["angles"] = angle_data
         item["z_interpolation"] = z_data
-        # print(f"Writing to key {key}")
         save_path = os.path.join("tmp", key)
         with open(save_path, "wb") as f:
             pickle.dump(item, f)
@@ -351,15 +348,10 @@ class ETL:
                 length = np.sqrt(vec[0] ** 2 + vec[1] ** 2)
                 node.length = length if length > node.length else node.length
 
-    def detect_movement(self, window, angle):
-        points = []
-        for point in self.angles[angle]:
-            points.append(point + "_x")
-            points.append(point + "_y")
-            points.append(point + "_z")
-        window = window.filter(items=points)
-        differences = [window[column].max() - window[column].min() for column in window]
-        return any([difference > self.MINIMAL_MOVEMENT for difference in differences])
+    def detect_movement(self, window):
+        # Returns true if the span of radians in the window is larger than minimal movement
+        difference = window.max() - window.min()
+        return difference > self.MINIMAL_MOVEMENT
 
     def create_angles(self, data, z_data):
         angles = {key: [] for key in self.angles.keys()}
@@ -382,7 +374,7 @@ class ETL:
         for window_size in self.window_sizes:
             pool = Pool()
             for angle in self.angles.keys():
-                pool.apply_async(self.generate_fourier_data, args=(window_size, angle, window_size//window_overlap, True, ), callback=update_progress)
+                pool.apply_async(self.generate_fourier_data, args=(angle, window_size, window_size//window_overlap, True, ), callback=update_progress)
             pool.close()
             pool.join()
         pbar.close()
@@ -392,24 +384,22 @@ class ETL:
         for angle in self.angles.keys():
             self.generate_fourier_data(window_size, angle)
 
-    def generate_fourier_data(self, window_size, angle, window_step, save=False):
+    def generate_fourier_data(self, angle, window_size, window_step, save=False):
         dataset = pd.DataFrame(columns=["label", "data"])
         for key, item in self.cima.items():
             angles = item["angles"]
-            data = item["data"]
-            z_data = item["z_interpolation"]
-            for i in range(0, len(data), window_step):
-                window = data.loc[i:i + window_size - 1, :].join(z_data.loc[i:i + window_size - 1, :])
+            for i in range(0, len(angles), window_step):
+                window = angles.loc[i:i + window_size - 1, angle]
                 if len(window) < window_size:
                     continue
-                if "movement" in self.noise_reduction and not self.detect_movement(window, angle):
+                if "movement" in self.noise_reduction and not self.detect_movement(window):
                     continue
-                angle_window = angles.loc[i:i + window_size - 1, angle]
-                angle_window = angle_window - angle_window.mean()
-                fourier_data = np.abs(np.fft.fft(angle_window))
+                window = window - window.mean()
+                fourier_data = np.abs(np.fft.fft(window))
                 dataset = dataset.append(
                     {"frame_start": i, "id": key, "label": item["label"], "data": list(fourier_data[1:window_size // 2])},
-                    ignore_index=True)
+                    ignore_index=True
+                )
         if self.bandwidth != 0:
             dataset = self.generate_frequency_bands(dataset)
         if save:
@@ -443,7 +433,7 @@ class ETL:
 
 
 if __name__ == "__main__":
-    etl = ETL("/home/login/datasets", [128, 256, 512, 1024], size=16)
-    etl.load("CIMA", validation=True)
+    etl = ETL("/home/erlend/datasets", [128, 256, 512, 1024], size=16)
+    etl.load("CIMA")
     etl.preprocess_pooled()
     etl.generate_fourier_dataset(window_overlap=1)
