@@ -22,20 +22,16 @@ from sklearn import model_selection, neighbors, metrics
 from sklearn.decomposition import PCA
 from sklearn.cross_decomposition import PLSRegression
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import KFold
-from pyod.models.xgbod import XGBOD
+from sklearn.model_selection import StratifiedKFold
 import models.create_models as create_models
 
 
 def get_search_parameter():
     parameters = {
-        "noise_reduction": ["movement"],
-        "minimal_movement": [0.25, 0.5, 0.75, 1.0],
-        "pooling": ["mean"],
+        "minimal_movement": [0.5, 0.75],
         "sma": [3],
-        "bandwidth": [0],
-        "pls": [5],
-        "window_overlap": [1]
+        "pls": [3, 5, 10],
+        "window_overlap": [1, 2, 4]
     }
     return parameters
 
@@ -45,13 +41,19 @@ def model_testing(data, model):
 
     clf = model["model"](**model["parameters"])
 
+    import time
+    start_time = time.time()
+
     if model["supervised"]:
         clf.fit(X_train, y_train)
     else:
         clf.fit(X_train)
 
-    # y_train_pred = clf.labels_  # binary labels (0: inliers, 1: outliers)
-    # y_train_scores = clf.decision_scores_  # raw outlier scores
+    end_time = time.time()
+    elapsed = int(end_time-start_time)
+
+    # print(f"\n{model['model']} - {str(model['parameters'])[:100]}")
+    # print(f"elapsed - {elapsed}s\n")
 
     y_test_pred = clf.predict(X_test) # outlier labels (0 or 1)
     if -1 in y_test_pred:
@@ -60,7 +62,7 @@ def model_testing(data, model):
                 y_test_pred[i] = 0
             elif y_test_pred[i] == -1:
                 y_test_pred[i] = 1
-    y_test_scores = clf.decision_function(X_test)  # outlier scores
+    # y_test_scores = clf.decision_function(X_test)  # outlier scores
 
     tn, fp, fn, tp = metrics.confusion_matrix(y_test, y_test_pred, labels=[0, 1]).ravel()
 
@@ -88,41 +90,48 @@ def run_search(path, window_sizes, angles, models, size=0, result_name="search_r
     DATA_PATH = path
     grid = model_selection.ParameterGrid(get_search_parameter())
 
-    if os.path.exists("model_search_results.csv"):
-        results = pd.read_csv("model_search_results.csv", index_col=0)
-    else:
-        results = pd.DataFrame(
-            columns=["model", "model_parameter", "noise_reduction", "minimal_movement", "bandwidth", "pooling", "sma",
-                     "window_overlap", "pls", "window_size", "angle",
-                     "sensitivity", "specificity"]
-        )
+    results = pd.DataFrame(
+        columns=["model", "model_parameter", "minimal_movement", "sma",
+                 "window_overlap", "pls", "window_size", "angle",
+                 "sensitivity", "specificity"]
+    )
 
     if not os.path.exists("tmp"):
         os.mkdir("tmp")
 
     for i, params in enumerate(grid):
 
-
-        if skippable_params(params):
-            continue
-
         print(f"Running with params: \n{params}")
+
+        if run_done(i, len(window_sizes) * len(angles)):
+            print(f"Found parameters in checkpoints, skipping...")
+            continue
 
         generate_fourier(DATA_PATH, window_sizes, size, params)
 
-        print(f"The number of methods without k-folding are: {str(len(models))}")
+        # print(f"The number of methods without k-folding are: {str(len(models))}")
         pbar = tqdm(total=len(models) * len(window_sizes) * len(angles) * kfold_splits)
 
         def update_progress(*a):
             pbar.update()
 
         for window_size, angle in iterate_angles():
+
+            if result_exist(result_name, i, window_size, angle):
+                print(f"Found this combination in checkpoints, skipping...")
+                pbar.update(len(models)*kfold_splits)
+                continue
+
             with Manager() as manager:
                 synced_results = manager.list()
 
                 data, labels = load_fourier_angle(window_size, angle)
 
-                for batch in chunkify(models, 20):
+                data_amount = data.shape[0]
+
+                print(f"Data amount:  {data_amount}")
+
+                for batch in chunkify(models, 2):
                     pool = Pool()
 
                     kfold_parameters = {
@@ -145,14 +154,22 @@ def run_search(path, window_sizes, angles, models, size=0, result_name="search_r
         pbar.close()
     save_and_clean(result_name)
 
+def result_exist(result_name, i, window_size, angle):
+    checkpoint_name = f"{result_name.split('/')[-1]}_{str(window_size)}_{angle}_{i}.csv"
+    return os.path.exists(f"tmp/{checkpoint_name}")
+
+def run_done(run_num, runs):
+    filenames = os.listdir("tmp")
+    suffix = f"_{run_num}.csv"
+    done = [run for run in filenames if suffix in run]
+    return len(done) == runs
+
+
 def generate_fourier(data_path, window_sizes, size, params):
     etl = ETL(
         data_path=data_path,
         window_sizes=window_sizes,
-        bandwidth=params["bandwidth"],
-        pooling=params["pooling"],
         sma_window=params["sma"],
-        noise_reduction=params["noise_reduction"],
         minimal_movement=params["minimal_movement"],
         size=size
     )
@@ -162,26 +179,16 @@ def generate_fourier(data_path, window_sizes, size, params):
     print("\nGenerating fourier data.")
     etl.generate_fourier_dataset(window_overlap=params["window_overlap"])
 
-def skippable_params(params):
-    if params["pls"] == 0 and params["bandwidth"] == 0:
-        # No dimension reduction, too many dimensions.
-        print("No dimension reduction, skipping...\n")
-        pbar.update()
-        return true
-
-    if params["bandwidth"] == 0 and params["pooling"] == "max":
-        # Pooling is dependent on bandwidth, so no bandwidth = no pooling. Remove one choice in pooling to reduce it to 1.
-        print("Invalid combination, skipping...\n")
-        pbar.update()
-        return true
-
 def save_and_clean(result_name):
     final_results = pd.DataFrame()
     for filename in os.listdir("tmp"):
         sub_results = pd.read_csv(f"tmp/{filename}")
         final_results = final_results.append(sub_results)
     final_results.to_csv(f"{result_name}.csv", index=False)
-    shutil.rmtree("tmp")
+    print("Do you want to delete the temporary files?")
+    answer = input("y or n: ")
+    if answer.lower() == "y":
+        shutil.rmtree("tmp")
 
 def iterate_angles():
     for window_size in window_sizes:
@@ -209,10 +216,7 @@ def dump_results(params, synced_results, window_size, path):
         results.append({
             "model": result["model"],
             "model_parameter": result["parameters"],
-            "noise_reduction": params["noise_reduction"],
             "minimal_movement": params["minimal_movement"],
-            "bandwidth": params["bandwidth"],
-            "pooling": params["pooling"],
             "sma": params["sma"],
             "window_overlap": params["window_overlap"],
             "pls": params["pls"],
@@ -227,8 +231,8 @@ def dump_results(params, synced_results, window_size, path):
     results.to_csv(result_path)
 
 def async_kfold(X, y, parameters, synced_results, callback):
-    kf = KFold(n_splits=parameters["splits"])
-    for train_index, test_index in kf.split(X):
+    kf = StratifiedKFold(n_splits=parameters["splits"])
+    for train_index, test_index in kf.split(X, y):
         x_train = X.iloc[train_index]
         y_train = y[train_index]
         if parameters["novelty"]:
@@ -255,9 +259,10 @@ def async_model_testing(model_data, model, synced_result, angle):
     except Exception as e:
         print("Unexpected error:", sys.exc_info()[0])
         print(e)
+        print(model["parameters"])
         print(f"{model['model']} crashed.")
 
-        sensitivity, specificity = ("crashed", "crashed")
+        sensitivity, specificity, roc_auc = ("crashed", "crashed", "crashed")
     synced_result.append({
         "model": model["model"],
         "parameters": model["parameters"],
@@ -274,10 +279,7 @@ def average_results(file):
     results = results.groupby([
         "model",
         "model_parameter",
-        "noise_reduction",
         "minimal_movement",
-        "bandwidth",
-        "pooling",
         "sma",
         "window_overlap",
         "pls",
@@ -290,17 +292,17 @@ def average_results(file):
 def construct_base_estimators():
     from pyod.models.knn import KNN
     from pyod.models.lof import LOF
+    from pyod.models.cblof import CBLOF
     from pyod.models.hbos import HBOS
     from pyod.models.iforest import IForest
+    from pyod.models.abod import ABOD
     from pyod.models.ocsvm import OCSVM
 
     estimator_list = []
 
     # predefined range of n_neighbors for KNN, AvgKNN, and LOF
-    k_range = [1, 3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    k_range = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 
-    # validate the value of k
-    k_range = [k for k in k_range]
 
     for k in k_range:
         estimator_list.append({
@@ -329,6 +331,15 @@ def construct_base_estimators():
                 "contamination": 0.05
             }
         })
+        if k <= 20:
+            estimator_list.append({
+                "model": ABOD,
+                "supervised": False,
+                "parameters": {
+                    "n_neighbors": k,
+                    "contamination": 0.05
+                }
+            })
 
     n_bins_range = [3, 5, 7, 9, 12, 15, 20, 25, 30, 50]
     for n_bins in n_bins_range:
@@ -366,29 +377,135 @@ def construct_base_estimators():
             }
         })
 
+    # Cluster range
+
+    n_clusters_range = [8, 10, 12, 14, 16, 18, 20]
+    for n_clusters in n_clusters_range:
+        estimator_list.append({
+            "model": CBLOF,
+            "supervised": False,
+            "parameters": {
+                "n_clusters": n_clusters,
+                "contamination": 0.05
+            }
+        })
+
+    return estimator_list
+
+def construct_raw_base_estimators():
+    from pyod.models.knn import KNN
+    from pyod.models.lof import LOF
+    from pyod.models.cblof import CBLOF
+    from pyod.models.hbos import HBOS
+    from pyod.models.iforest import IForest
+    from pyod.models.abod import ABOD
+    from pyod.models.ocsvm import OCSVM
+
+    estimator_list = []
+
+    # predefined range of n_neighbors for KNN, AvgKNN, and LOF
+    k_range = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+
+    for k in k_range:
+        estimator_list.append(KNN(n_neighbors=k, method="largest", contamination=0.05))
+        estimator_list.append(KNN(n_neighbors=k, method="mean", contamination=0.05))
+        estimator_list.append(LOF(n_neighbors=k, contamination=0.05))
+        # if k <= 20:
+        #     estimator_list.append(ABOD(n_neighbors=k, contamination=0.05))
+
+    # n_bins_range = [3, 5, 7, 9, 12, 15, 20, 25, 30, 50]
+    # for n_bins in n_bins_range:
+    #     estimator_list.append(HBOS(n_bins=n_bins, contamination=0.05))
+
+    # predefined range of nu for one-class svm
+    nu_range = [0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99]
+    for nu in nu_range:
+        estimator_list.append(OCSVM(nu=nu, contamination=0.05))
+
+    # predefined range for number of estimators in isolation forests
+    n_range = [10, 20, 50, 70, 100, 150, 200, 250]
+    for n in n_range:
+        estimator_list.append(IForest(n_estimators=n, random_state=42, contamination=0.05))
+
+    # Cluster range
+
+    # n_clusters_range = [8, 10, 12, 14, 16, 18, 20]
+    # for n_clusters in n_clusters_range:
+    #     estimator_list.append(CBLOF(n_clusters=n_clusters, contamination=0.05))
+
     return estimator_list
 
 def construct_xgbod():
-
+    from pyod.models.xgbod import XGBOD
     model = {
-            "model": XGBOD,
-            "supervised": True,
-            "parameters": {
-                "silent": False,
-                "n_jobs": 6
-            }
+        "model": XGBOD,
+        "supervised": True,
+        "parameters": {
+            "estimator_list": construct_raw_base_estimators(),
+            "silent": False,
+            "n_jobs": 6
+        }
     }
     return [model]
+
+def construct_lscp():
+    from pyod.models.lscp import LSCP
+    model = {
+        "model": LSCP,
+        "supervised": False,
+        "parameters": {
+            "detector_list": construct_raw_base_estimators(),
+            "local_region_size": 150,
+            "n_bins": 10,
+            "random_state": 42
+        }
+    }
+    return [model]
+
+def construct_simple_aggregator():
+    from combo.models.detector_comb import SimpleDetectorAggregator
+    models = []
+    models.append({
+        "model": SimpleDetectorAggregator,
+        "supervised": False,
+        "parameters": {
+            "base_estimators": construct_raw_base_estimators(),
+            "method": "average"
+        }
+    })
+    models.append({
+        "model": SimpleDetectorAggregator,
+        "supervised": False,
+        "parameters": {
+            "base_estimators": construct_raw_base_estimators(),
+            "method": "maximization"
+        }
+    })
+    return models
 
 if __name__ == '__main__':
     DATA_PATH = "/home/erlend/datasets"
     window_sizes = [128, 256, 512, 1024]
     angles = ["shoulder", "elbow", "hip", "knee"]
-    models = construct_xgbod()
+    base_estimators = construct_base_estimators()
+    aggregators = construct_simple_aggregator()
+    xgbod = construct_xgbod()
+    lscp = construct_lscp()
 
-    run_search(DATA_PATH, window_sizes, angles, models, result_name="results/xgbod")
+    models = []
 
-    average_results("results/xgbod.csv")
+    for aggregator in aggregators:
+        models.append(aggregator)
 
-    from analyse_results import print_results
-    print_results("results/xgbod.csv", sort_by=["roc_auc"])
+    for model in xgbod:
+        models.append(model)
+
+    for model in lscp:
+        models.append(model)
+
+    run_search(DATA_PATH, window_sizes, angles, models, result_name="results/ensembles")
+
+    average_results("results/ensembles.csv")
+
+    # from analyse_results import print_results
+    # print_results("results/xgbod.csv", sort_by=["roc_auc"])
