@@ -80,44 +80,27 @@ def print_base_estimators_by_id(filename, ids):
         model_parameters = model_parameters.replace(",", ",\n").replace("),", ")\n").replace("[", "[\n")
         print(model_parameters)
 
+def average_results(file):
+    results = pd.read_csv(file, index_col=0, engine="python")
+    results = results.fillna(-1)
+    results = results.groupby([
+        "window_method",
+        "window_sizes",
+        "angle_method",
+        "body_part_method",
+        "threshold"
+    ]).mean().reset_index()
+    results.to_csv(file[0:-4] + "_groupBy.csv")
 
 if __name__ == '__main__':
-    models = {
-        "KNN": "<class 'pyod.models.knn.KNN'>",
-        "ABOD": "<class 'pyod.models.abod.ABOD'>",
-        "CBLOF": "<class 'pyod.models.cblof.CBLOF'>",
-        "LOF": "<class 'pyod.models.lof.LOF'>",
-        "HBOS": "<class 'pyod.models.hbos.HBOS'>",
-        "OCSVM": "<class 'pyod.models.ocsvm.OCSVM'>"
-    }
-
-    minimal_movement = [0.02, 0.04, 0.1]
-    pooling = ["max, mean"]
-    pca = [0, 5, 10]
-    window_size = [128, 256, 512, 1024]
-    angles = ["shoulder", "hip", "knee", "elbow"]
-    drop_parameters = [
-        "minimal_movement",
-        "noise_reduction",
-        "bandwidth",
-        "pooling",
-        "sma",
-        "window_overlap",
-        "pca",
-        "Unnamed: 0.1"
-    ]
-
-
-    file_path_basis = "results//model_search_kfold.csv"
-    file_path_basis_groupBy = "results//model_search_kfold_groupBy.csv"
-    file_path_ensemble = "results//ensemble_Search_kfold.csv"
-    file_path_ensemble_groupBy = "results//ensemble_Search_kfold_groupBy.csv"
-
-    print_angles(file_path_basis_groupBy, number_of_rows=500, drop_column=drop_parameters, sort_by=["model", "sensitivity"])
-
-    # print_angles(file_path_ensemble_groupBy, number_of_rows=5, drop_column=drop_parameters, sort_by=["model", "sensitivity"])
-
-    # print_base_estimators_by_id(file_path_ensemble_groupBy, [15, 1615, 3, 1613, 13, 1609, 10, 1610, 3202, 4800, 3200, 8])
+    average_results("results/report/xgbod.csv")
+    average_results("results/report/lscp.csv")
+    average_results("results/report/simple-max.csv")
+    average_results("results/report/simple-mean.csv")
+    print_results("results/report/xgbod_groupBy.csv", sort_by=["roc_auc"], number_of_rows=10)
+    print_results("results/report/lscp_groupBy.csv", sort_by=["roc_auc"], number_of_rows=10)
+    print_results("results/report/simple-max_groupBy.csv", sort_by=["roc_auc"], number_of_rows=10)
+    print_results("results/report/simple-mean_groupBy.csv", sort_by=["roc_auc"], number_of_rows=10)
 
 
 
