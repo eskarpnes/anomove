@@ -6,7 +6,7 @@ from pyod.models.abod import ABOD
 from pyod.models.knn import KNN
 from pyod.models.ocsvm import OCSVM
 from combo.models.detector_comb import SimpleDetectorAggregator
-from sklearn.decomposition import PCA
+from sklearn.cross_decomposition import PLSRegression
 from sklearn.preprocessing import StandardScaler
 import sys
 import os
@@ -21,69 +21,98 @@ def load_data(dataset):
     etl = ETL(
             DATA_PATH,
             [128, 256, 512, 1024],
-            pooling="mean",
             sma_window=3,
-            bandwidth=5,
-            minimal_movement=0.05
+            minimal_movement=0.75
         )
     etl.load(dataset)
     etl.preprocess_pooled()
-    etl.generate_fourier_dataset(window_overlap=8)
+    etl.generate_fourier_dataset(window_overlap=1)
 
+def construct_raw_base_estimators():
+    from pyod.models.knn import KNN
+    from pyod.models.lof import LOF
+    from pyod.models.cblof import CBLOF
+    from pyod.models.hbos import HBOS
+    from pyod.models.iforest import IForest
+    from pyod.models.abod import ABOD
+    from pyod.models.ocsvm import OCSVM
 
-def construct_model():
-    classifiers = [
-        LOF(n_neighbors=1),
-        LOF(n_neighbors=3),
-        LOF(n_neighbors=5),
-        LOF(n_neighbors=7),
-        LOF(n_neighbors=8),
-        LOF(n_neighbors=9),
-        LOF(n_neighbors=10),
-        ABOD(n_neighbors=5),
-        KNN(n_neighbors=5),
-        OCSVM()
-    ]
-    model = SimpleDetectorAggregator(
-        classifiers,
-        method="average"
+    estimator_list = []
+
+    # predefined range of n_neighbors for KNN, AvgKNN, and LOF
+    k_range = [3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+
+    for k in k_range:
+        estimator_list.append(KNN(n_neighbors=k, method="largest", contamination=0.05))
+        estimator_list.append(KNN(n_neighbors=k, method="mean", contamination=0.05))
+        estimator_list.append(LOF(n_neighbors=k, contamination=0.05))
+
+    # predefined range of nu for one-class svm
+    nu_range = [0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99]
+    for nu in nu_range:
+        estimator_list.append(OCSVM(nu=nu, contamination=0.05))
+
+    # predefined range for number of estimators in isolation forests
+    n_range = [10, 20, 50, 70, 100, 150, 200, 250]
+    for n in n_range:
+        estimator_list.append(IForest(n_estimators=n, random_state=42, contamination=0.05))
+
+    return estimator_list
+
+def construct_simple_aggregator(method):
+    from combo.models.detector_comb import SimpleDetectorAggregator
+    model = SimpleDetectorAggregator(construct_raw_base_estimators(), method=method)
+    return model
+
+def construct_xgbod():
+    from pyod.models.xgbod import XGBOD
+    model = XGBOD(estimator_list=construct_raw_base_estimators(), silent=False, n_jobs=24)
+    return model
+
+def construct_lscp():
+    from pyod.models.lscp import LSCP
+    base_estimators = construct_raw_base_estimators()
+    model = LSCP(
+        base_estimators,
+        local_region_size=150,
+        contamination=0.05,
+        n_bins=10,
+        random_state=42
     )
     return model
 
+def train_model(model_name, X, y, save=True):
+    # window_sizes = [128, 256, 512, 1024]
+    # angles = ["right_shoulder", "left_shoulder", "right_elbow", "left_elbow", "right_hip", "left_hip", "right_knee",
+    #           "left_knee"]
+    model_dict = {}
+    pls = PLSRegression(n_components=5)
+    X = pls.fit_transform(X, y)[0]
 
-def train_model(model_name):
-    window_sizes = [128, 256, 512, 1024]
-    angles = ["right_shoulder", "left_shoulder", "right_elbow", "left_elbow", "right_hip", "left_hip", "right_knee",
-              "left_knee"]
-    models = {}
-    for window_size in window_sizes:
-        scaler = StandardScaler()
-        pca = PCA(n_components=10)
-        X = pd.DataFrame()
-        for angle in angles:
-            fourier_path = os.path.join(DATA_PATH, str(window_size), angle + ".json")
-            df = pd.read_json(fourier_path)
-            X = X.append(df)
-        X_features = pd.DataFrame(X.data.tolist())
-        X_scaled = scaler.fit_transform(X_features)
-        X_pca = pca.fit_transform(X_scaled)
-        # y = X["label"]
+    if "lscp" in model_name:
+        model = construct_lscp()
+    elif "xgbod" in model_name:
+        model = construct_xgbod()
+    elif "simple-mean" in model_name:
+        model = construct_simple_aggregator("average")
+    elif "simple-max" in model_name:
+        model = construct_simple_aggregator("maximization")
 
-        model = construct_model()
-        model.fit(X_pca)
+    model.fit(X, y)
 
-        models[window_size] = {
-            "scaler": scaler,
-            "pca": pca,
-            "model": model
-        }
+    model_dict = {
+        "pls": pls,
+        "model": model
+    }
+    if save:
+        if not os.path.exists("saved_models"):
+            os.mkdir("saved_models")
+        save_path = os.path.join("saved_models", model_name + ".joblib")
+        joblib.dump(model_dict, save_path)
 
-    if not os.path.exists("saved_models"):
-        os.mkdir("saved_models")
-    save_path = os.path.join("saved_models", model_name + ".joblib")
-    joblib.dump(models, save_path)
+    return model_dict
 
 
 if __name__ == "__main__":
     load_data("CIMA")
-    train_model("ensemble_model_low_movement")
+    train_model("lscp")
