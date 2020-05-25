@@ -58,12 +58,11 @@ class ETL:
             data_path,
             window_sizes,
             size=0,
-            bandwidth=5,
+            bandwidth=0,
             pooling="mean",
-            noise_reduction=["movement"],
-            minimal_movement=0.02,
+            minimal_movement=0.5,
             random_seed=np.random.randint(1000),
-            sma_window=5
+            sma_window=3
     ):
 
         self.DATA_PATH = data_path
@@ -71,7 +70,6 @@ class ETL:
         self.window_sizes = window_sizes
         self.bandwidth = bandwidth
         self.pooling = pooling
-        self.noise_reduction = noise_reduction
         self.MINIMAL_MOVEMENT = minimal_movement
         self.random_seed = random_seed
         self.size = size
@@ -89,6 +87,7 @@ class ETL:
         }
         self.cima_id = None
         self.cache = True
+        self.differences = []
 
     def load_infant(self, infant_id, fps=30):
         self.validation = False
@@ -105,7 +104,7 @@ class ETL:
         self.cima_id = f"{'validation' if validation else 'data'}{'_' + str(self.size) if self.size != 0 else ''}_{self.sma_window}"
         save_path = os.path.join(self.cache_path, self.cima_id)
 
-        if os.path.exists(save_path):
+        if os.path.exists(save_path) and self.cache:
             with open(save_path, "rb") as f:
                 self.cima = pickle.load(f)
                 return
@@ -228,11 +227,12 @@ class ETL:
 
         shutil.rmtree("tmp")
 
-        if not os.path.exists(self.cache_path):
-            os.mkdir(self.cache_path)
+        if self.cache:
+            if not os.path.exists(self.cache_path):
+                os.mkdir(self.cache_path)
 
-        with open(save_path, "wb") as f:
-            pickle.dump(self.cima, f)
+            with open(save_path, "wb") as f:
+                pickle.dump(self.cima, f)
 
 
 
@@ -351,6 +351,7 @@ class ETL:
     def detect_movement(self, window):
         # Returns true if the span of radians in the window is larger than minimal movement
         difference = window.max() - window.min()
+        self.differences.append(difference)
         return difference > self.MINIMAL_MOVEMENT
 
     def create_angles(self, data, z_data):
@@ -392,7 +393,7 @@ class ETL:
                 window = angles.loc[i:i + window_size - 1, angle]
                 if len(window) < window_size:
                     continue
-                if "movement" in self.noise_reduction and not self.detect_movement(window):
+                if not self.detect_movement(window):
                     continue
                 window = window - window.mean()
                 fourier_data = np.abs(np.fft.fft(window))
