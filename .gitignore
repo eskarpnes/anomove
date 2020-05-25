@@ -7,4 +7,6 @@ __pycache__
 etl/tmp
 *.avi
 *.csv
+*.json
 models/saved_models
+models/results
