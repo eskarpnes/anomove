@@ -76,7 +76,11 @@ def model_testing(data, model):
     else:
         specificity = tn / (tn + fp)
 
-    roc_auc = metrics.roc_auc_score(y_test, y_test_pred)
+    y_test_scores = clf.predict_proba(X_test)
+    if len(y_test_scores.shape) != 1:
+        y_test_scores = y_test_scores[:,1]
+
+    roc_auc = metrics.roc_auc_score(y_test, y_test_scores)
 
     return sensitivity, specificity, roc_auc
 
@@ -131,7 +135,7 @@ def run_search(path, window_sizes, angles, models, size=0, result_name="search_r
 
                 print(f"Data amount:  {data_amount}")
 
-                for batch in chunkify(models, 2):
+                for batch in chunkify(models, 1):
                     pool = Pool()
 
                     kfold_parameters = {
@@ -251,6 +255,7 @@ def async_kfold(X, y, parameters, synced_results, callback):
         for model in parameters["batch"]:
             parameters["pool"].apply_async(async_model_testing, args=(model_data, model, synced_results, parameters["angle"],),
                              callback=callback)
+            # async_model_testing(model_data, model, synced_results, parameters["angle"])
 
 def async_model_testing(model_data, model, synced_result, angle):
     try:
@@ -259,7 +264,7 @@ def async_model_testing(model_data, model, synced_result, angle):
     except Exception as e:
         print("Unexpected error:", sys.exc_info()[0])
         print(e)
-        print(model["parameters"])
+        # print(model["parameters"])
         print(f"{model['model']} crashed.")
 
         sensitivity, specificity, roc_auc = ("crashed", "crashed", "crashed")
@@ -505,7 +510,7 @@ if __name__ == '__main__':
 
     run_search(DATA_PATH, window_sizes, angles, models, result_name="results/ensembles")
 
-    average_results("results/ensembles.csv")
+    # average_results("results/ensembles.csv")
 
     # from analyse_results import print_results
     # print_results("results/xgbod.csv", sort_by=["roc_auc"])
